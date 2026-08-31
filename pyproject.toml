@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "extrato-pdf"
+version = "0.1.0"
+description = "Extração e validação de consistência de extratos bancários em PDFs heterogêneos (TCC 3)"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Leonardo Dario Borges" }]
+dependencies = [
+  "pymupdf>=1.24.0",
+  "pytesseract>=0.3.10",
+  "Pillow>=10.0.0",
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.30.0",
+  "jinja2>=3.1.0",
+  "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0", "httpx>=0.27.0"]
+
+[project.scripts]
+extrato-pdf = "extrato_pdf.cli.main:main"
+extrato-pdf-web = "extrato_pdf.web.app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+extrato_pdf = ["web/templates/*.html", "web/static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+  "ocr: testes que exigem Tesseract instalado",
+]

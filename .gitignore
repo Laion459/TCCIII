@@ -1,0 +1,34 @@
+# Uso interno (não versionar)
+uso_interno/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Dados sensíveis / saídas locais
+dados/entrada/**
+!dados/entrada/README.md
+dados/referencia_manual/**
+!dados/referencia_manual/README.md
+!dados/referencia_manual/exemplo_formato.json
+resultados/**
+!resultados/**/README.md
+logs/**
+!logs/README.md
+
+# SO / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.pdf

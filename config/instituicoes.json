@@ -1,0 +1,15 @@
+{
+  "instituicoes": [
+    {
+      "id": "sicoob",
+      "nome_canonico": "SICOOB",
+      "padroes": [
+        "SICOOB",
+        "Banco Sicoob",
+        "Sistema de Cooperativas de Crédito do Brasil",
+        "SISTEMA DE COOPERATIVAS DE CREDITO DO BRASIL",
+        "SICOOB CREDISC"
+      ]
+    }
+  ]
+}

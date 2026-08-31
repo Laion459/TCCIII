@@ -1,0 +1,41 @@
+{
+  "tolerancia_monetaria": 0.01,
+  "limiar_localizacao": 8,
+  "pesos_localizacao": {
+    "extrato|extrato de conta|extrato conta corrente": 5,
+    "saldo|saldo anterior|saldo final|saldo em c.corrente": 3,
+    "lancamento|lançamento|conta corrente|historico de movimentacao|histórico de movimentação": 3,
+    "agencia|agência|conta|credito|crédito|debito|débito": 2,
+    "data_dd_mm_aaaa": 2,
+    "valor_monetario_br": 2,
+    "instituicao": 3,
+    "boleto|nf|recibo|demonstrativo financeiro|balancete": -4,
+    "conta capital": -5,
+    "sac|ouvidoria|limite|saldo bloq": -3
+  },
+  "classificacao_pdf": {
+    "min_caracteres_pagina_com_texto": 40,
+    "percentual_minimo_nativo": 90.0,
+    "comentario": "DP03: pagina com texto se >=40 chars; nativo se >=90% das paginas; escaneado se 0%; senao hibrido. 90% alinha o piloto (paginas vazias/imagem) a classe hibrido."
+  },
+  "ocr": {
+    "idioma": "por",
+    "dpi": 200,
+    "workers": 4,
+    "tesseract_cmd": "C:\\\\Program Files\\\\Tesseract-OCR\\\\tesseract.exe"
+  },
+  "campos_obrigatorios": [
+    "saldo_inicial",
+    "total_entradas",
+    "total_saidas",
+    "saldo_final_informado"
+  ],
+  "mapa_ids_documento": {
+    "contas 012025.pdf": "D01",
+    "contas 022025.pdf": "D02",
+    "contas 032025.pdf": "D03",
+    "contas_012025.pdf": "D01",
+    "contas_022025.pdf": "D02",
+    "contas_032025.pdf": "D03"
+  }
+}
