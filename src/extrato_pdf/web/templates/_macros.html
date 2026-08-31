@@ -1,0 +1,30 @@
+{# Macros reutilizáveis da interface web #}
+
+{% macro badge_status(status) %}
+<span class="badge {{ status | status_class }}">{{ status | status_label }}</span>
+{% endmacro %}
+
+{% macro stat_card(titulo, valor, hint=None, accent=None) %}
+<div class="card stat-card{% if accent %} stat-card--{{ accent }}{% endif %}">
+  <h3>{{ titulo }}</h3>
+  <div class="valor">{{ valor }}</div>
+  {% if hint %}<p class="stat-hint">{{ hint }}</p>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro empty_state(titulo, texto, cta_label=None, cta_href=None) %}
+<div class="empty-state">
+  <div class="empty-icon" aria-hidden="true">◌</div>
+  <h3>{{ titulo }}</h3>
+  <p>{{ texto }}</p>
+  {% if cta_label and cta_href %}
+    <a class="btn" href="{{ cta_href }}">{{ cta_label }}</a>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% macro pipeline_stepper(stepper_id='pipeline-stepper') %}
+<nav class="pipeline-stepper" id="{{ stepper_id }}" aria-label="Etapas do pipeline" hidden>
+  <ol class="pipeline-steps"></ol>
+</nav>
+{% endmacro %}

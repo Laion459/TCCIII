@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge_status, pipeline_stepper %}
+
+{% block title %}Detalhe{% endblock %}
+{% block content %}
+  {% if erro %}
+    <div class="alert err">{{ erro }}</div>
+  {% endif %}
+
+  {% if detalhe %}
+    {% set d = detalhe.dados %}
+    {% set ui = detalhe.relatorio_ui %}
+
+    <header class="page-header">
+      <div>
+        <p class="page-sub"><a href="/resultados">← voltar aos resultados</a></p>
+        <h1 class="page-title">{{ d.documento.arquivo }}</h1>
+        <div class="report-meta">
+          {% set per = d.extrato.periodo or {} %}
+          <span>{{ d.extrato.instituicao or 'Instituição não identificada' }}</span>
+          <span>{{ per.inicio | periodo(per.fim) }}</span>
+          <span>{{ d.documento.quantidade_paginas or '?' }} páginas</span>
+          <span>PDF {{ d.documento.tipo_pdf or '—' }}</span>
+          <span>Condição {{ d.experimento.condicao }}</span>
+        </div>
+      </div>
+      <div class="actions">
+        {{ badge_status(ui.status) }}
+      </div>
+    </header>
+
+    {% if detalhe.condicoes_alternativas %}
+      <div class="compare-strip">
+        <span class="compare-chip atual">
+          Condição {{ d.experimento.condicao }}
+          {{ badge_status(ui.status) }}
+        </span>
+        {% for alt in detalhe.condicoes_alternativas %}
+          <a class="compare-chip" href="/resultados/ver?path={{ alt.caminho_relativo }}">
+            Condição {{ alt.condicao }}
+            {{ badge_status(alt.status) }}
+          </a>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if ui.equacao %}
+      <section class="equation-hero" aria-label="Equação de consistência">
+        <p class="equation-formula">
+          {{ ui.equacao.saldo_inicial | brl }}
+          <span class="op">+</span>
+          {{ ui.equacao.total_entradas | brl }}
+          <span class="op">−</span>
+          {{ ui.equacao.total_saidas | brl }}
+          <span class="op">=</span>
+          {{ ui.equacao.saldo_final_calculado | brl }}
+        </p>
+        <div class="equation-result">
+          <span>Informado: <strong>{{ ui.equacao.saldo_final_informado | brl }}</strong></span>
+          <span>Diferença: <strong class="{% if ui.equacao.dentro_tolerancia %}ok-text{% else %}err-text{% endif %}">{{ ui.equacao.diferenca | brl }}</strong></span>
+          <span>Tolerância: {{ ui.equacao.tolerancia | brl }}</span>
+        </div>
+      </section>
+    {% else %}
+      <div class="alert warn">Campos insuficientes para calcular a equação de consistência.</div>
+    {% endif %}
+
+    <div class="panel">
+      <h2>Regras de validação</h2>
+      <div class="rules-grid">
+        {% for regra in ui.regras %}
+          <article class="rule-card rule-card--{{ regra.status }}">
+            <div class="rule-code">{{ regra.codigo }}</div>
+            <div class="rule-title">{{ regra.titulo }}</div>
+            <div class="rule-evidence">{{ regra.evidencia }}</div>
+          </article>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="panel tabs" data-tabs>
+      <div class="tab-list" role="tablist">
+        <button type="button" class="tab-btn ativo" data-tab="resumo" role="tab">Resumo</button>
+        <button type="button" class="tab-btn" data-tab="paginas" role="tab">Páginas</button>
+        <button type="button" class="tab-btn" data-tab="tecnico" role="tab">Técnico</button>
+      </div>
+
+      <div data-panel="resumo">
+        <div class="table-wrap">
+        <table>
+          <tr><th>Saldo inicial</th><td>{{ d.valores.saldo_inicial | brl }}</td></tr>
+          <tr><th>Total entradas</th><td>{{ d.valores.total_entradas | brl }}</td></tr>
+          <tr><th>Total saídas</th><td>{{ d.valores.total_saidas | brl }}</td></tr>
+          <tr><th>Saldo final informado</th><td>{{ d.valores.saldo_final_informado | brl }}</td></tr>
+          <tr><th>Saldo final calculado</th><td>{{ d.valores.saldo_final_calculado | brl }}</td></tr>
+          <tr><th>Revisão humana</th><td>{{ 'Sim' if d.validacao.revisao_humana else 'Não' }}</td></tr>
+          <tr><th>Alertas</th><td>{{ d.alertas | join('; ') if d.alertas else '(nenhum)' }}</td></tr>
+        </table>
+        </div>
+        <div class="actions" style="margin-top:1rem">
+          <button type="button" class="btn secondary" data-drawer-open="drawer-relatorio">Ver relatório TXT</button>
+          <button type="button" class="btn secondary" data-drawer-open="drawer-json">Ver JSON</button>
+        </div>
+      </div>
+
+      <div data-panel="paginas" hidden>
+        {% if ui.paginas_extrato %}
+          <p class="muted">Páginas utilizadas na extração do extrato:</p>
+          <div class="page-tags">
+            {% for p in ui.paginas_extrato %}
+              <span class="page-tag">pág. {{ p }}</span>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="muted">Nenhuma página de extrato registrada.</p>
+        {% endif %}
+      </div>
+
+      <div data-panel="tecnico" hidden>
+        <table>
+          <tr><th>ID documento</th><td>{{ d.documento.id }}</td></tr>
+          <tr><th>Tipo conta</th><td>{{ d.extrato.tipo_conta or '—' }}</td></tr>
+          <tr><th>Limiar localização</th><td>{{ d.experimento.parametros.limiar_localizacao }}</td></tr>
+          <tr><th>OCR DPI / workers</th><td>{{ d.experimento.parametros.ocr_dpi }} / {{ d.experimento.parametros.ocr_workers }}</td></tr>
+          <tr><th>Versão extrato_pdf</th><td>{{ d.experimento.versoes.extrato_pdf }}</td></tr>
+        </table>
+        <h3 style="margin-top:1rem">Log de execução</h3>
+        <pre class="log-live">{{ detalhe.log }}</pre>
+      </div>
+    </div>
+
+    <div class="drawer" id="drawer-relatorio" hidden>
+      <div class="drawer-header">
+        <strong>Relatório TXT</strong>
+        <button type="button" class="btn secondary" data-drawer-close>Fechar</button>
+      </div>
+      <div class="drawer-body"><pre class="pre">{{ detalhe.relatorio }}</pre></div>
+    </div>
+
+    <div class="drawer" id="drawer-json" hidden>
+      <div class="drawer-header">
+        <strong>JSON completo</strong>
+        <button type="button" class="btn secondary" data-drawer-close>Fechar</button>
+      </div>
+      <div class="drawer-body"><pre class="pre">{{ d | tojson(indent=2) }}</pre></div>
+    </div>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    if (window.ExtratoUI) ExtratoUI.initTabs();
+    if (window.ExtratoUI) ExtratoUI.initDrawers();
+  });
+</script>
+{% endblock %}

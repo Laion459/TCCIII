@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Configuração{% endblock %}
+{% block content %}
+  <header class="page-header">
+    <div>
+      <h1 class="page-title">Configuração</h1>
+      <p class="page-sub">Parâmetros que afetam extração, OCR e validação. Alterações valem para as próximas execuções.</p>
+    </div>
+  </header>
+
+  {% if ok %}<div class="alert ok">Configuração salva em <code>config/default.json</code>.</div>{% endif %}
+  {% if erro %}<div class="alert err">{{ erro }}</div>{% endif %}
+
+  {% if cfg %}
+  <form method="post" action="/config" class="config-form">
+    <div class="panel tabs" data-tabs>
+      <div class="tab-list" role="tablist">
+        <button type="button" class="tab-btn ativo" data-tab="validacao">Validação</button>
+        <button type="button" class="tab-btn" data-tab="ocr">OCR</button>
+        <button type="button" class="tab-btn" data-tab="classificacao">Classificação PDF</button>
+        <button type="button" class="tab-btn" data-tab="instituicoes">Instituições</button>
+        <button type="button" class="tab-btn" data-tab="avancado">Avançado</button>
+      </div>
+
+      <div data-panel="validacao">
+        <h2>Validação e localização</h2>
+        <p class="muted chart-caption">Impactam a regra R07 (tolerância) e a pontuação de páginas de extrato.</p>
+        <div class="config-grid">
+          <div class="form-row">
+            <label for="tolerancia_monetaria">Tolerância monetária (R$)</label>
+            <input type="text" id="tolerancia_monetaria" name="tolerancia_monetaria" required
+                   value="{{ cfg.tolerancia_monetaria }}" inputmode="decimal" />
+            <span class="field-hint">Diferença máxima aceita entre saldo calculado e informado (padrão: 0,01).</span>
+          </div>
+          <div class="form-row">
+            <label for="limiar_localizacao">Limiar de localização</label>
+            <input type="number" id="limiar_localizacao" name="limiar_localizacao" required min="1" max="100"
+                   value="{{ cfg.limiar_localizacao }}" />
+            <span class="field-hint">Score mínimo para considerar uma página como extrato (padrão: 8).</span>
+          </div>
+        </div>
+      </div>
+
+      <div data-panel="ocr" hidden>
+        <h2>OCR (Tesseract)</h2>
+        <p class="muted chart-caption">Usado nas condições B e C. PDFs grandes demoram mais com DPI alto.</p>
+        <div class="config-grid">
+          <div class="form-row">
+            <label for="tesseract_cmd">Caminho do Tesseract</label>
+            <input type="text" id="tesseract_cmd" name="tesseract_cmd" required
+                   value="{{ cfg.tesseract_cmd }}" />
+            <span class="field-hint">Executável no Windows, ex.: <code>C:\Program Files\Tesseract-OCR\tesseract.exe</code></span>
+          </div>
+          <div class="form-row">
+            <label for="ocr_dpi">DPI de renderização</label>
+            <input type="number" id="ocr_dpi" name="ocr_dpi" required min="72" max="600" value="{{ cfg.ocr_dpi }}" />
+            <span class="field-hint">Qualidade da imagem para OCR (padrão: 200).</span>
+          </div>
+          <div class="form-row">
+            <label for="ocr_workers">Workers paralelos</label>
+            <input type="number" id="ocr_workers" name="ocr_workers" required min="1" max="16" value="{{ cfg.ocr_workers }}" />
+            <span class="field-hint">Páginas OCR em paralelo. Use 1 para desativar.</span>
+          </div>
+          <div class="form-row">
+            <label for="ocr_idioma">Idioma OCR</label>
+            <input type="text" id="ocr_idioma" name="ocr_idioma" required maxlength="10" value="{{ cfg.ocr_idioma }}" />
+            <span class="field-hint">Código Tesseract (ex.: <code>por</code>).</span>
+          </div>
+        </div>
+      </div>
+
+      <div data-panel="classificacao" hidden>
+        <h2>Classificação do PDF</h2>
+        <p class="muted chart-caption">Define se o documento é tratado como nativo, escaneado ou híbrido (DP03).</p>
+        <div class="config-grid">
+          <div class="form-row">
+            <label for="min_caracteres_pagina">Mín. caracteres por página</label>
+            <input type="number" id="min_caracteres_pagina" name="min_caracteres_pagina" required min="1" max="5000"
+                   value="{{ cfg.min_caracteres_pagina }}" />
+            <span class="field-hint">Página com texto nativo se tiver ao menos N caracteres (padrão: 40).</span>
+          </div>
+          <div class="form-row">
+            <label for="percentual_minimo_nativo">% mínimo nativo</label>
+            <input type="number" id="percentual_minimo_nativo" name="percentual_minimo_nativo" required
+                   min="0" max="100" step="0.1" value="{{ cfg.percentual_minimo_nativo }}" />
+            <span class="field-hint">PDF nativo se ≥ este % de páginas tiver texto (padrão: 90).</span>
+          </div>
+        </div>
+      </div>
+
+      <div data-panel="instituicoes" hidden>
+        <h2>Instituições (somente leitura)</h2>
+        <p class="muted chart-caption">Padrões de banco ficam em <code>{{ cfg.instituicoes_path }}</code> — edição manual por enquanto.</p>
+        {% if cfg.instituicoes %}
+          <div class="rules-grid">
+            {% for inst in cfg.instituicoes %}
+              <article class="rule-card rule-card--ok">
+                <div class="rule-code">{{ inst.id }}</div>
+                <div class="rule-title">{{ inst.nome_canonico }}</div>
+                <div class="rule-evidence">{{ inst.padroes | join(' · ') }}</div>
+              </article>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="muted">Nenhuma instituição configurada.</p>
+        {% endif %}
+      </div>
+
+      <div data-panel="avancado" hidden>
+        <h2>Parâmetros avançados</h2>
+        <p class="muted chart-caption">Estes itens continuam apenas no JSON — evita quebrar regex/pesos pela interface.</p>
+        <ul class="config-meta-list">
+          <li><strong>Pesos de localização:</strong> {{ cfg.qtd_pesos_localizacao }} padrões em <code>pesos_localizacao</code></li>
+          <li><strong>Mapa de IDs:</strong> {{ cfg.qtd_mapa_ids }} documento(s) em <code>mapa_ids_documento</code></li>
+          <li><strong>Arquivo principal:</strong> <code>{{ cfg.default_path }}</code></li>
+        </ul>
+        <p class="muted">Para experimentos finos (regex, pesos negativos, IDs), edite o JSON diretamente e reinicie o processamento.</p>
+      </div>
+    </div>
+
+    <div class="actions config-actions">
+      <button class="btn" type="submit">Salvar configuração</button>
+      <a class="btn secondary" href="/config">Recarregar</a>
+    </div>
+  </form>
+  {% else %}
+    <div class="alert err">Não foi possível carregar a configuração. Verifique <code>config/default.json</code>.</div>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    if (window.ExtratoUI) ExtratoUI.initTabs();
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Resultados{% endblock %}
+{% block content %}
+  <h1 class="page-title">Resultados</h1>
+  <p class="page-sub">Todos os <code>resultado.json</code> encontrados sob <code>resultados/</code>.</p>
+
+  <div class="panel">
+    <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Arquivo</th><th>Pasta</th><th>Cond.</th><th>Status</th><th>Instituição</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for r in itens %}
+        <tr>
+          <td>{{ r.arquivo }}</td>
+          <td class="muted">{{ r.caminho_relativo }}</td>
+          <td>{{ r.condicao or '-' }}</td>
+          <td>
+            <span class="badge {% if r.status == 'consistente' %}ok{% elif r.status in ['incompleto','revisao_necessaria'] %}warn{% else %}err{% endif %}">
+              {{ r.status }}
+            </span>
+          </td>
+          <td>{{ r.instituicao or '-' }}</td>
+          <td><a href="/resultados/ver?path={{ r.caminho_relativo }}">detalhe</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="muted">Nenhum resultado.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+{% endblock %}

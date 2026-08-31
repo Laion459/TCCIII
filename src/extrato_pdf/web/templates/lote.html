@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% from "_macros.html" import pipeline_stepper %}
+
+{% block title %}Lote{% endblock %}
+{% block content %}
+  <header class="page-header">
+    <div>
+      <h1 class="page-title">Lote / Experimentos</h1>
+      <p class="page-sub">Processa vários PDFs com pipeline visual, barra de progresso, ETA e log ao vivo.</p>
+    </div>
+  </header>
+
+  <div id="alert-erro" class="alert err" hidden></div>
+  <div id="alert-ok" class="alert ok" hidden></div>
+  <div id="live-status" class="sr-only" aria-live="polite"></div>
+
+  <div class="panel">
+    <form id="form-lote">
+      <div class="form-row">
+        <label for="condicao">Condição</label>
+        <select id="condicao" name="condicao">
+          <option value="A" selected>A — nativo (recomendado para começar)</option>
+          <option value="C">C — integrada</option>
+          <option value="B">B — OCR (lento em PDFs grandes)</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>PDFs selecionados</label>
+        <div class="check-list">
+          {% for p in pdfs %}
+            <label><input type="checkbox" name="pdfs" value="{{ p.nome }}" checked /> {{ p.nome }} ({{ p.tamanho_mb }} MB)</label>
+          {% else %}
+            <p class="muted">Nenhum PDF em dados/entrada/</p>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn" type="submit" id="btn-lote">Iniciar lote</button>
+        <button class="btn secondary danger" type="button" id="btn-cancelar" hidden>Cancelar</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="panel progress-panel" id="painel-progresso" hidden>
+    {{ pipeline_stepper('pipeline-stepper') }}
+    <div class="progress-header">
+      <div>
+        <h2 style="margin:0">Execução em andamento</h2>
+        <p class="progress-meta" id="prog-mensagem">Preparando...</p>
+        <p class="progress-meta" id="prog-atual"></p>
+      </div>
+      <div class="progress-meta" id="prog-tempo">Decorrido: — · ETA: —</div>
+    </div>
+    <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div class="progress-bar" id="prog-bar"></div>
+    </div>
+    <p id="prog-bar-label" class="muted" style="margin-top:-.5rem">0/0 (0%)</p>
+    <div class="progress-sub" id="prog-sub-painel" hidden>
+      <p id="prog-sub-label" class="progress-sub-label">OCR</p>
+      <div class="progress-track"><div class="progress-bar" id="prog-sub-bar"></div></div>
+    </div>
+    <p id="prog-contagem" style="margin:.75rem 0"></p>
+
+    <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Arquivo</th><th>Status</th><th>Instituição / erro</th><th>Tempo</th><th></th></tr>
+      </thead>
+      <tbody id="prog-tabela"></tbody>
+    </table>
+    </div>
+
+    <h3>Log ao vivo</h3>
+    <pre class="log-live" id="prog-logs"></pre>
+  </div>
+
+  {% if relatorio %}
+  <div class="panel">
+    <h2>Resumo (modo síncrono)</h2>
+    <p>Condição <strong>{{ relatorio.condicao }}</strong> · {{ relatorio.total }} arquivo(s) · {{ relatorio.duracao_total_s }}s</p>
+  </div>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  <script src="/static/progress.js?v={{ static_v }}"></script>
+  <script>
+    const opts = {
+      painelId: "painel-progresso",
+      stepperId: "pipeline-stepper",
+      barId: "prog-bar",
+      barLabelId: "prog-bar-label",
+      subPainelId: "prog-sub-painel",
+      subBarId: "prog-sub-bar",
+      subBarLabelId: "prog-sub-label",
+      mensagemId: "prog-mensagem",
+      atualId: "prog-atual",
+      tempoId: "prog-tempo",
+      contagemId: "prog-contagem",
+      liveRegionId: "live-status",
+      tabelaBodyId: "prog-tabela",
+      logsId: "prog-logs",
+      cancelBtnId: "btn-cancelar",
+      submitBtnId: "btn-lote",
+    };
+
+    let jobIdAtual = null;
+
+    document.getElementById("form-lote").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      document.getElementById("alert-erro").hidden = true;
+      document.getElementById("alert-ok").hidden = true;
+      try {
+        const fd = new FormData(e.target);
+        const resp = await fetch("/api/lote/iniciar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            condicao: fd.get("condicao"),
+            pdfs: fd.getAll("pdfs"),
+          }),
+        });
+        if (!resp.ok) {
+          const err = await resp.json();
+          throw new Error(err.detail || "Erro ao iniciar");
+        }
+        const { job_id } = await resp.json();
+        jobIdAtual = job_id;
+        document.getElementById("btn-cancelar").hidden = false;
+        ExtratoProgress.acompanharJob(job_id, {
+          ...opts,
+          onComplete(job) {
+            document.getElementById("btn-cancelar").hidden = true;
+            const ok = document.getElementById("alert-ok");
+            const err = document.getElementById("alert-erro");
+            if (job.status === "cancelado") {
+              err.hidden = false;
+              err.textContent = `Lote cancelado — ${job.concluidos}/${job.total} concluído(s) antes da parada`;
+              return;
+            }
+            ok.hidden = false;
+            ok.textContent = `Lote finalizado: ${job.concluidos}/${job.total} — ${job.mensagem}`;
+          },
+        });
+      } catch (err) {
+        const box = document.getElementById("alert-erro");
+        box.hidden = false;
+        box.textContent = err.message;
+        if (window.ExtratoUI) ExtratoUI.toast(err.message, "err");
+      }
+    });
+
+    document.getElementById("btn-cancelar").addEventListener("click", async () => {
+      if (!jobIdAtual) return;
+      await fetch(`/api/jobs/${jobIdAtual}/cancelar`, { method: "POST" });
+    });
+  </script>
+{% endblock %}

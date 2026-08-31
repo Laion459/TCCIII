@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge_status, stat_card, empty_state %}
+
+{% block title %}Painel{% endblock %}
+{% block content %}
+  <header class="page-header">
+    <div>
+      <h1 class="page-title">Painel</h1>
+      <p class="page-sub">Visão geral do corpus, taxa de consistência e últimas execuções.</p>
+    </div>
+  </header>
+
+  <div class="hero-actions">
+    <a class="btn" href="/lote">Iniciar experimento em lote</a>
+    <a class="btn secondary" href="/processar">Processar um PDF</a>
+    <a class="btn secondary" href="/metricas">Métricas experimentais</a>
+  </div>
+
+  <div class="grid">
+    {{ stat_card("PDFs em entrada", resumo.qtd_pdfs) }}
+    {{ stat_card("Resultados gerados", resumo.qtd_resultados) }}
+    {{ stat_card("Taxa consistência", resumo.taxa_consistencia ~ "%", "sobre resultados existentes", "ok" if resumo.taxa_consistencia >= 50 else "warn") }}
+    {{ stat_card("Referências manuais", resumo.qtd_referencias) }}
+  </div>
+
+  <div class="panel">
+    <h2>Status agregados</h2>
+    {% if resumo.por_status %}
+      <div class="status-distribution">
+        {% for status, qtd in resumo.por_status.items() %}
+          {{ badge_status(status) }}
+          <span class="muted">× {{ qtd }}</span>
+        {% endfor %}
+      </div>
+    {% else %}
+      {{ empty_state("Nenhum resultado ainda", "Processe PDFs em lote ou unitariamente para popular o dashboard.", "Ir para lote", "/lote") }}
+    {% endif %}
+  </div>
+
+  <div class="panel">
+    <h2>Atividade recente</h2>
+    {% if resumo.ultimos_resultados %}
+      <ul class="activity-feed">
+        {% for r in resumo.ultimos_resultados %}
+          <li>
+            <div>
+              <strong>{{ r.arquivo }}</strong>
+              <span class="muted"> · cond. {{ r.condicao or '—' }}</span>
+            </div>
+            <div class="actions">
+              {{ badge_status(r.status) }}
+              <a href="/resultados/ver?path={{ r.caminho_relativo }}">abrir</a>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted">Sem atividade registrada.</p>
+    {% endif %}
+  </div>
+{% endblock %}

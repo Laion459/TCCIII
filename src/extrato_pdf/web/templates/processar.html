@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% from "_macros.html" import pipeline_stepper %}
+
+{% block title %}Processar{% endblock %}
+{% block content %}
+  <header class="page-header">
+    <div>
+      <h1 class="page-title">Processar um PDF</h1>
+      <p class="page-sub">Pipeline completo com stepper de etapas, barra de progresso e log ao vivo.</p>
+    </div>
+  </header>
+
+  <div id="alert-erro" class="alert err" hidden></div>
+  <div id="alert-ok" class="alert ok" hidden></div>
+  <div id="live-status" class="sr-only" aria-live="polite"></div>
+
+  <div class="panel">
+    <form id="form-processar">
+      <div class="form-row">
+        <label for="pdf">PDF</label>
+        <select id="pdf" name="pdf" required>
+          {% for p in pdfs %}
+            <option value="{{ p.nome }}" {% if selecionado == p.nome %}selected{% endif %}>{{ p.nome }} ({{ p.tamanho_mb }} MB)</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-row">
+        <label for="condicao">Condição experimental</label>
+        <select id="condicao" name="condicao">
+          <option value="A" {% if condicao == 'A' %}selected{% endif %}>A — só nativo (rápido)</option>
+          <option value="C" {% if not condicao or condicao == 'C' %}selected{% endif %}>C — integrada (recomendado)</option>
+          <option value="B" {% if condicao == 'B' %}selected{% endif %}>B — só OCR (lento)</option>
+        </select>
+      </div>
+      <button class="btn" type="submit" id="btn-processar">Processar</button>
+    </form>
+  </div>
+
+  <div class="panel progress-panel" id="painel-progresso" hidden>
+    {{ pipeline_stepper('pipeline-stepper') }}
+    <div class="progress-header">
+      <div>
+        <h2 style="margin:0">Processando</h2>
+        <p class="progress-meta" id="prog-mensagem">Aguardando...</p>
+        <p class="progress-meta" id="prog-atual"></p>
+      </div>
+      <div class="progress-meta" id="prog-tempo"></div>
+    </div>
+    <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div class="progress-bar" id="prog-bar"></div>
+    </div>
+    <p id="prog-bar-label" class="muted">0/1</p>
+    <div class="progress-sub" id="prog-sub-painel" hidden>
+      <p id="prog-sub-label" class="progress-sub-label">OCR</p>
+      <div class="progress-track"><div class="progress-bar" id="prog-sub-bar"></div></div>
+    </div>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Arquivo</th><th>Status</th><th>Detalhe</th><th>Tempo</th><th></th></tr></thead>
+      <tbody id="prog-tabela"></tbody>
+    </table>
+    </div>
+    <h3>Log</h3>
+    <pre class="log-live" id="prog-logs"></pre>
+  </div>
+
+  <div class="panel" id="painel-resultado" hidden>
+    <h2>Resultado</h2>
+    <p><a id="link-detalhe" class="btn secondary" href="#">Abrir relatório de validação</a></p>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="/static/progress.js?v={{ static_v }}"></script>
+  <script>
+    const opts = {
+      painelId: "painel-progresso",
+      stepperId: "pipeline-stepper",
+      barId: "prog-bar",
+      barLabelId: "prog-bar-label",
+      subPainelId: "prog-sub-painel",
+      subBarId: "prog-sub-bar",
+      subBarLabelId: "prog-sub-label",
+      mensagemId: "prog-mensagem",
+      atualId: "prog-atual",
+      tempoId: "prog-tempo",
+      liveRegionId: "live-status",
+      contagemId: null,
+      tabelaBodyId: "prog-tabela",
+      logsId: "prog-logs",
+      cancelBtnId: null,
+      submitBtnId: "btn-processar",
+    };
+
+    document.getElementById("form-processar").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      document.getElementById("alert-erro").hidden = true;
+      document.getElementById("alert-ok").hidden = true;
+      document.getElementById("painel-resultado").hidden = true;
+      const pdf = document.getElementById("pdf").value;
+      const condicao = document.getElementById("condicao").value;
+      try {
+        ExtratoProgress.iniciarUnitario(pdf, condicao, {
+          ...opts,
+          onComplete(job) {
+            const item = job.itens[0];
+            document.getElementById("alert-ok").hidden = false;
+            document.getElementById("alert-ok").textContent =
+              `${item.arquivo} → ${item.resultado_status || item.status}`;
+            if (item.caminho_relativo) {
+              document.getElementById("link-detalhe").href =
+                `/resultados/ver?path=${encodeURIComponent(item.caminho_relativo)}`;
+              document.getElementById("painel-resultado").hidden = false;
+            }
+          },
+        });
+      } catch (err) {
+        const box = document.getElementById("alert-erro");
+        box.hidden = false;
+        box.textContent = err.message;
+        if (window.ExtratoUI) ExtratoUI.toast(err.message, "err");
+      }
+    });
+  </script>
+{% endblock %}

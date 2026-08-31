@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge_status, empty_state %}
+
+{% block title %}Métricas experimentais{% endblock %}
+{% block content %}
+  <header class="page-header">
+    <div>
+      <h1 class="page-title">Métricas experimentais</h1>
+      <p class="page-sub">Comparação A / B / C — corpus completo e métricas vs. referência manual.</p>
+    </div>
+    <div class="actions">
+      <a class="btn secondary" href="/lote">Novo lote</a>
+    </div>
+  </header>
+
+  {% if erro %}<div class="alert err">{{ erro }}</div>{% endif %}
+
+  {% if dados and dados.laboratorio %}
+    {% set lab = dados.laboratorio %}
+    {% set hip = lab.hipotese %}
+
+    <div class="panel hipotese-panel hipotese-panel--{{ hip.veredito }}">
+      <div class="hipotese-header">
+        <div>
+          <h2>Hipótese do TCC</h2>
+          <p class="muted">{{ hip.texto }}</p>
+        </div>
+        <span class="badge {% if hip.veredito == 'confirmada' %}ok{% elif hip.veredito == 'parcial' %}warn{% elif hip.veredito == 'refutada' %}err{% else %}info{% endif %}">
+          {{ hip.veredito | replace('_', ' ') | capitalize }}
+        </span>
+      </div>
+      <div class="hipotese-scores">
+        {% for cond in lab.condicoes %}
+          {% set score = hip.scores[cond] %}
+          <div class="score-chip">
+            <span class="score-cond">Condição {{ cond }}</span>
+            <strong class="score-val">{{ score }}%</strong>
+            {% if cond == 'C' %}
+              <span class="score-hint">
+                {% if hip.c_maior_igual_a %}✓ ≥ A{% else %}✗ &lt; A{% endif %}
+                ·
+                {% if hip.c_maior_igual_b %}✓ ≥ B{% else %}✗ &lt; B{% endif %}
+              </span>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="grid grid-2">
+      <div class="panel chart-panel">
+        <h2>Taxa de consistência (corpus)</h2>
+        <p class="muted chart-caption">Percentual de resultados <em>consistente</em> por condição experimental.</p>
+        <div class="chart-bar-group chart-bar-group--tall" id="chart-taxa"></div>
+        <div class="chart-legend">
+          {% for cond in lab.condicoes %}
+            <span><i style="background:var(--chart-{{ cond | lower }})"></i> {{ cond }} · {{ lab.corpus[cond].total }} PDF(s)</span>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="panel chart-panel">
+        <h2>Acertos vs. referência manual</h2>
+        <p class="muted chart-caption">{{ dados.total }} comparação(ões) com <code>dados/referencia_manual/</code>.</p>
+        <div id="chart-acertos"></div>
+      </div>
+    </div>
+
+    <div class="panel chart-panel">
+      <h2>Distribuição de status</h2>
+      <div id="chart-status"></div>
+    </div>
+
+    <div class="panel chart-panel">
+      <h2>Heatmap documento × condição</h2>
+      <p class="muted chart-caption">Visão rápida de qual condição performou em cada PDF.</p>
+      <div class="heatmap-scroll" id="chart-heatmap"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Tabela detalhada (referência)</h2>
+      {% if dados.itens %}
+        <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Documento</th><th>Cond.</th><th>Inst.</th><th>Período</th>
+              <th>Saldo ini.</th><th>Err. entradas</th><th>Err. saídas</th><th>Status</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m in dados.itens %}
+            <tr>
+              <td>{{ m.documento }}</td>
+              <td><span class="badge info">{{ m.condicao or '-' }}</span></td>
+              <td>{{ '✓' if m.acerto_instituicao else '✗' }}</td>
+              <td>{{ '✓' if m.acerto_periodo else '✗' }}</td>
+              <td>{{ '✓' if m.acerto_saldo_inicial else '✗' }}</td>
+              <td>{{ m.erro_entradas if m.erro_entradas is not none else '—' }}</td>
+              <td>{{ m.erro_saidas if m.erro_saidas is not none else '—' }}</td>
+              <td>{{ badge_status(m.status_processamento) }}</td>
+              <td>
+                {% if m.caminho_resultado %}
+                  <a href="/resultados/ver?path={{ m.caminho_resultado | replace('/resultado.json', '') }}">abrir</a>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        <p class="muted" style="margin-top:.75rem">Arquivo: <code>{{ dados.arquivo }}</code></p>
+      {% else %}
+        {{ empty_state("Sem comparações com referência", "Adicione JSONs em dados/referencia_manual/ e reprocesse os PDFs.", "Ver PDFs", "/pdfs") }}
+      {% endif %}
+    </div>
+
+    <script type="application/json" id="lab-data">{{ dados.laboratorio | tojson }}</script>
+  {% else %}
+    {{ empty_state("Laboratório indisponível", "Execute experimentos em Lote para popular métricas.", "Ir para lote", "/lote") }}
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  <script src="/static/charts.js?v={{ static_v }}"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const raw = document.getElementById("lab-data");
+      if (!raw || !window.ExtratoCharts) return;
+      try {
+        ExtratoCharts.renderLaboratorio(JSON.parse(raw.textContent));
+      } catch (e) {
+        console.error(e);
+      }
+    });
+  </script>
+{% endblock %}

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Ajuda{% endblock %}
+{% block content %}
+  <h1 class="page-title">Ajuda</h1>
+  <p class="page-sub">Interface web local sobre o pipeline do TCC 3. Sem envio de documentos à nuvem.</p>
+
+  <div class="panel">
+    <h2>Fluxo recomendado</h2>
+    <ol>
+      <li>Coloque PDFs em <strong>PDFs de entrada</strong> (ou via upload).</li>
+      <li>Rode <strong>Lote / Experimentos</strong> na condição <strong>A</strong>.</li>
+      <li>Revise <strong>Resultados</strong> (consistente / incompleto / inconsistente).</li>
+      <li>Crie referências manuais em <code>dados/referencia_manual/</code>.</li>
+      <li>Abra <strong>Métricas</strong> e depois repita lote na condição <strong>C</strong>.</li>
+      <li>Use condição <strong>B</strong> só em amostra (OCR é lento).</li>
+    </ol>
+  </div>
+
+  <div class="panel">
+    <h2>CLI equivalente</h2>
+    <pre class="pre">extrato-pdf "dados\entrada\arquivo.pdf" --condicao A --saida resultados\experimentos\condicao_a
+extrato-pdf-web
+python scripts\run_experimentos.py --entrada dados\entrada --saida resultados\experimentos --condicoes A</pre>
+  </div>
+
+  <div class="panel">
+    <h2>Escopo acadêmico</h2>
+    <p>
+      O núcleo científico continua sendo o pipeline local com condições A/B/C e regras R01–R08.
+      Esta interface facilita operação e análise; o processamento permanece na sua máquina (LGPD).
+    </p>
+  </div>
+{% endblock %}
