@@ -1,0 +1,13 @@
+{
+  "documento": "contas_012025.pdf",
+  "tipo_pdf": "hibrido",
+  "instituicao": "SICOOB",
+  "periodo_inicio": "2025-01-01",
+  "periodo_fim": "2025-01-31",
+  "saldo_inicial": 2334.43,
+  "total_entradas": 145991.44,
+  "total_saidas": 145783.37,
+  "saldo_final_informado": 2542.50,
+  "paginas_extrato": "A_DEFINIR_SE_USADO_PARA_METRICA_DE_LOCALIZACAO",
+  "observacoes": "Exemplo de formato (TCC 2 §5.8). Substituir por referências reais ANTES dos experimentos. Não é resultado automático."
+}
