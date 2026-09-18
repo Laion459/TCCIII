@@ -72,3 +72,29 @@ def test_salvar_config_ui_rejeita_workers_invalido(tmp_path: Path, monkeypatch: 
                 "tesseract_cmd": "tesseract",
             }
         )
+
+
+def test_salvar_config_ui_rejeita_workers_acima_do_limite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    origem = Path(__file__).resolve().parents[2] / "config" / "default.json"
+    copia = tmp_path / "default.json"
+    copia.write_text(origem.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setattr(
+        "extrato_pdf.web.servicos.caminho_config_padrao",
+        lambda: copia,
+    )
+
+    with pytest.raises(ConfigInvalidaError):
+        salvar_config_ui(
+            {
+                "tolerancia_monetaria": "0.01",
+                "limiar_localizacao": "8",
+                "min_caracteres_pagina": "40",
+                "percentual_minimo_nativo": "90",
+                "ocr_dpi": "200",
+                "ocr_workers": "9",
+                "ocr_idioma": "por",
+                "tesseract_cmd": "tesseract",
+            }
+        )

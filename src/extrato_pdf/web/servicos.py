@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -25,7 +26,7 @@ from extrato_pdf.util.progresso import (
     ProgressoFn,
     verificar_cancelamento,
 )
-from extrato_pdf.web.experimentos import montar_laboratorio
+from extrato_pdf.web.experimentos import CONDICOES, agregar_corpus_experimentos, montar_laboratorio
 from extrato_pdf.web.formatacao import preparar_relatorio
 from extrato_pdf.web.jobs import ItemJob, Job, StatusItem, StatusJob, gerenciador
 
@@ -87,8 +88,15 @@ def listar_pdfs_entrada() -> list[ResumoPdf]:
     return itens
 
 
-def listar_resultados(base: Path | None = None) -> list[ResumoResultado]:
+def listar_resultados(
+    base: Path | None = None,
+    condicao: str | None = None,
+) -> list[ResumoResultado]:
+    """Lista resultados. Se `condicao` for A/B/C, restringe à pasta da condição."""
     raiz = base or pasta_resultados()
+    cond = (condicao or "").strip().upper() or None
+    if cond in CONDICOES:
+        raiz = pasta_experimentos() / f"condicao_{cond.lower()}"
     itens: list[ResumoResultado] = []
     if not raiz.exists():
         return itens
@@ -97,6 +105,15 @@ def listar_resultados(base: Path | None = None) -> list[ResumoResultado]:
             dados = json.loads(json_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             continue
+        cond_item = dados.get("experimento", {}).get("condicao")
+        if not cond_item:
+            # Inferir pela pasta condicao_x quando o JSON antigo não traz o campo.
+            for parte in json_path.parts:
+                if parte.startswith("condicao_"):
+                    cond_item = parte.replace("condicao_", "").upper()
+                    break
+        if cond in CONDICOES and cond_item and str(cond_item).upper() != cond:
+            continue
         rel = json_path.parent.relative_to(raiz_projeto())
         itens.append(
             ResumoResultado(
@@ -104,7 +121,7 @@ def listar_resultados(base: Path | None = None) -> list[ResumoResultado]:
                 arquivo=dados.get("documento", {}).get("arquivo", json_path.parent.name),
                 status=dados.get("validacao", {}).get("status_processamento", "?"),
                 instituicao=dados.get("extrato", {}).get("instituicao"),
-                condicao=dados.get("experimento", {}).get("condicao"),
+                condicao=cond_item,
                 consistente=dados.get("validacao", {}).get("consistente"),
                 caminho_relativo=str(rel).replace("\\", "/"),
             )
@@ -185,7 +202,7 @@ def _criar_callback_progresso(job: Job, item: ItemJob) -> ProgressoFn:
             detalhe = _formatar_mensagem_ocr(evento)
             job.atualizar_progresso(
                 etapa=etapa,
-                mensagem=f"{item.arquivo} — {detalhe}",
+                mensagem=f"{item.arquivo} - {detalhe}",
                 sub_progresso=sub,
             )
             item.mensagem = detalhe
@@ -194,7 +211,7 @@ def _criar_callback_progresso(job: Job, item: ItemJob) -> ProgressoFn:
         rotulo = ETAPAS.get(etapa, etapa.replace("_", " ").capitalize())
         job.atualizar_progresso(
             etapa=etapa,
-            mensagem=f"{item.arquivo} — {rotulo}",
+            mensagem=f"{item.arquivo} - {rotulo}",
             sub_progresso=None,
         )
         item.mensagem = rotulo
@@ -305,7 +322,7 @@ def _finalizar_cancelamento(job, item, inicio: float) -> None:
     job.arquivo_atual = None
     job.status = StatusJob.CANCELADO
     job.mensagem = "Cancelado pelo usuário"
-    job.adicionar_log(f"⊘ {item.arquivo} — cancelado")
+    job.adicionar_log(f"⊘ {item.arquivo} - cancelado")
 
 
 def _executar_job_lote(job) -> None:
@@ -315,7 +332,7 @@ def _executar_job_lote(job) -> None:
 
     job.status = StatusJob.EXECUTANDO
     job.iniciado_em = time.perf_counter()
-    job.adicionar_log(f"Iniciando lote — condição {cond}")
+    job.adicionar_log(f"Iniciando lote - condição {cond}")
 
     for idx, item in enumerate(job.itens):
         if job.cancelar:
@@ -350,7 +367,7 @@ def _executar_job_lote(job) -> None:
             item.mensagem = resultado["status"]
             chave = resultado["status"]
             job.contagem[chave] = job.contagem.get(chave, 0) + 1
-            job.adicionar_log(f"✓ {item.arquivo} — {resultado['status']} ({item.duracao_s}s)")
+            job.adicionar_log(f"✓ {item.arquivo} - {resultado['status']} ({item.duracao_s}s)")
         except ProcessamentoCanceladoError:
             _finalizar_cancelamento(job, item, inicio)
             return
@@ -361,11 +378,11 @@ def _executar_job_lote(job) -> None:
             item.duracao_s = round(time.perf_counter() - inicio, 2)
             item.mensagem = "erro"
             job.contagem["erro"] = job.contagem.get("erro", 0) + 1
-            job.adicionar_log(f"✗ {item.arquivo} — {exc}")
+            job.adicionar_log(f"✗ {item.arquivo} - {exc}")
 
     job.arquivo_atual = None
     job.status = StatusJob.CONCLUIDO
-    job.mensagem = f"Concluído — {job.concluidos}/{job.total} arquivo(s)"
+    job.mensagem = f"Concluído - {job.concluidos}/{job.total} arquivo(s)"
     job.adicionar_log("Lote finalizado")
 
 
@@ -396,7 +413,7 @@ def _executar_job_unitario(job) -> None:
         item.mensagem = resultado["status"]
         job.contagem[resultado["status"]] = 1
         job.status = StatusJob.CONCLUIDO
-        job.mensagem = f"Concluído — {resultado['status']}"
+        job.mensagem = f"Concluído - {resultado['status']}"
         job.adicionar_log(f"✓ {resultado['status']} ({item.duracao_s}s)")
     except ProcessamentoCanceladoError:
         _finalizar_cancelamento(job, item, inicio)
@@ -515,26 +532,72 @@ def calcular_metricas() -> dict[str, Any]:
 
 
 def resumo_dashboard() -> dict[str, Any]:
+    """Resumo do painel com métricas separadas por condição A/B/C (sem misturar)."""
     pdfs = listar_pdfs_entrada()
     resultados = listar_resultados()
-    por_status: dict[str, int] = {}
-    for r in resultados:
-        por_status[r.status] = por_status.get(r.status, 0) + 1
     refs = [
         p.name
         for p in pasta_referencias().glob("*.json")
-        if p.name != "exemplo_formato.json"
+        if not p.name.startswith("_") and p.name != "exemplo_formato.json"
     ]
-    total_status = sum(por_status.values())
-    consistentes = por_status.get("consistente", 0)
-    taxa_consistencia = round((consistentes / total_status) * 100, 1) if total_status else 0.0
+    corpus = agregar_corpus_experimentos(pasta_experimentos())
+    por_condicao = []
+    for cond in CONDICOES:
+        info = corpus.get(cond, {})
+        por_condicao.append(
+            {
+                "condicao": cond,
+                "total": int(info.get("total", 0)),
+                "por_status": dict(info.get("por_status") or {}),
+                "taxa_consistente": float(info.get("taxa_consistente", 0.0)),
+                "href_resultados": f"/resultados?condicao={cond}",
+            }
+        )
     return {
         "qtd_pdfs": len(pdfs),
         "qtd_resultados": len(resultados),
         "qtd_referencias": len(refs),
-        "por_status": por_status,
-        "taxa_consistencia": taxa_consistencia,
+        "por_condicao": por_condicao,
+        "condicoes": list(CONDICOES),
         "ultimos_resultados": resultados[-8:][::-1],
+    }
+
+
+def limpar_resultados() -> dict[str, Any]:
+    """Remove saídas geradas sob resultados/, preservando README e estrutura base.
+
+    Não apaga PDFs de entrada, referências manuais nem configuração.
+    """
+    if gerenciador.tem_job_ativo():
+        raise RuntimeError(
+            "Há um processamento em andamento. Cancele ou aguarde antes de limpar."
+        )
+
+    raiz = pasta_resultados()
+    raiz.mkdir(parents=True, exist_ok=True)
+
+    removidos = 0
+    for item in list(raiz.iterdir()):
+        if item.name.lower() == "readme.md":
+            continue
+        if item.is_dir():
+            shutil.rmtree(item)
+            removidos += 1
+        elif item.is_file():
+            item.unlink()
+            removidos += 1
+
+    for sub in (
+        raiz / "experimentos" / "condicao_a",
+        raiz / "experimentos" / "condicao_b",
+        raiz / "experimentos" / "condicao_c",
+        raiz / "metricas",
+    ):
+        sub.mkdir(parents=True, exist_ok=True)
+
+    return {
+        "itens_removidos": removidos,
+        "qtd_resultados": len(listar_resultados()),
     }
 
 
@@ -586,7 +649,10 @@ def salvar_config_ui(dados: dict[str, Any]) -> None:
 
     ocr = atual.setdefault("ocr", {})
     ocr["dpi"] = int(dados["ocr_dpi"])
-    ocr["workers"] = int(dados["ocr_workers"])
+    workers = int(dados["ocr_workers"])
+    if workers < 1 or workers > 8:
+        raise ConfigInvalidaError("ocr.workers deve ser inteiro entre 1 e 8")
+    ocr["workers"] = workers
     ocr["idioma"] = str(dados["ocr_idioma"]).strip() or "por"
     ocr["tesseract_cmd"] = str(dados["tesseract_cmd"]).strip()
 

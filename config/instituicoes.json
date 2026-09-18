@@ -10,6 +10,17 @@
         "SISTEMA DE COOPERATIVAS DE CREDITO DO BRASIL",
         "SICOOB CREDISC"
       ]
+    },
+    {
+      "id": "caixa",
+      "nome_canonico": "CAIXA",
+      "padroes": [
+        "CAIXA",
+        "Caixa Econômica Federal",
+        "Caixa Economica Federal",
+        "CAIXA ECONOMICA FEDERAL",
+        "caixa.gov.br"
+      ]
     }
   ]
 }

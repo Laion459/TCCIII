@@ -1,9 +1,9 @@
-# Especificação técnica — TCC 3
+# Especificação técnica - TCC 3
 
 **Projeto:** Extração e Análise de Consistência de Dados de Extratos Bancários em Documentos PDF Heterogêneos  
 **Autor:** Leonardo Dario Borges  
 **Requisitos formais:** `TCC 2/revisao/tcc2_pronto_posbanca.md`  
-**Status:** implementado — pipeline CLI, interface web local, experimentos A/B/C
+**Status:** implementado - pipeline CLI, interface web local, experimentos A/B/C
 
 ---
 
@@ -28,7 +28,7 @@
 ### Corpus e referência
 
 - Meta documental: ≥ 20 PDFs com extrato identificável (piloto: SICOOB).
-- Referência manual (ground truth) produzida **antes** da comparação automática — ver `dados/referencia_manual/`.
+- Referência manual (ground truth) produzida **antes** da comparação automática - ver `dados/referencia_manual/`.
 
 ---
 
@@ -55,7 +55,7 @@ Visão resumida dos pacotes: `docs/arquitetura.md`.
 1. Validar PDF → se inválido: `nao_processavel`.
 2. Extrair texto nativo por página; classificar `nativo` | `escaneado` | `hibrido`.
 3. Obter texto conforme condição A/B/C.
-4. Pontuar e selecionar páginas de extrato (limiar configurável, padrão 8).
+4. Pontuar e selecionar páginas de extrato (limiar configurável, padrão 25).
 5. Identificar instituição; extrair período e valores agregados.
 6. Normalizar monetário BR; aplicar R06/R07; definir status final.
 7. Serializar JSON, TXT e log com versões de bibliotecas e parâmetros.
@@ -144,7 +144,7 @@ Checklist operacional: `docs/checklist_validacao.md`.
 
 ## 8. Interface web
 
-Camada local (`127.0.0.1`) para operação e visualização — painel, processamento, lote, resultados, métricas experimentais, validação e configuração. O núcleo científico permanece o pipeline CLI; dados não saem da máquina (LGPD).
+Camada local (`127.0.0.1`) para operação e visualização - painel, processamento, lote, resultados, métricas experimentais, validação e configuração. O núcleo científico permanece o pipeline CLI; dados não saem da máquina (LGPD).
 
 ```powershell
 extrato-pdf-web

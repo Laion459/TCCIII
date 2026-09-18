@@ -19,9 +19,9 @@
       <div class="form-row">
         <label for="condicao">Condição</label>
         <select id="condicao" name="condicao">
-          <option value="A" selected>A — nativo (recomendado para começar)</option>
-          <option value="C">C — integrada</option>
-          <option value="B">B — OCR (lento em PDFs grandes)</option>
+          <option value="A" selected>A - nativo (recomendado para começar)</option>
+          <option value="C">C - integrada</option>
+          <option value="B">B - OCR (lento em PDFs grandes)</option>
         </select>
       </div>
       <div class="form-row">
@@ -49,7 +49,7 @@
         <p class="progress-meta" id="prog-mensagem">Preparando...</p>
         <p class="progress-meta" id="prog-atual"></p>
       </div>
-      <div class="progress-meta" id="prog-tempo">Decorrido: — · ETA: —</div>
+      <div class="progress-meta" id="prog-tempo">Decorrido: - · ETA: -</div>
     </div>
     <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
       <div class="progress-bar" id="prog-bar"></div>
@@ -135,11 +135,11 @@
             const err = document.getElementById("alert-erro");
             if (job.status === "cancelado") {
               err.hidden = false;
-              err.textContent = `Lote cancelado — ${job.concluidos}/${job.total} concluído(s) antes da parada`;
+              err.textContent = `Lote cancelado - ${job.concluidos}/${job.total} concluído(s) antes da parada`;
               return;
             }
             ok.hidden = false;
-            ok.textContent = `Lote finalizado: ${job.concluidos}/${job.total} — ${job.mensagem}`;
+            ok.textContent = `Lote finalizado: ${job.concluidos}/${job.total} - ${job.mensagem}`;
           },
         });
       } catch (err) {

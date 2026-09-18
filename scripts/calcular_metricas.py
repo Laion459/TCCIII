@@ -21,11 +21,13 @@ def main() -> int:
 
     config = carregar_config()
     tol = tolerancia(config)
-    refs = {
-        p.stem: json.loads(p.read_text(encoding="utf-8"))
-        for p in args.referencias.glob("*.json")
-        if p.name != "exemplo_formato.json"
-    }
+    refs = {}
+    for p in args.referencias.glob("*.json"):
+        if p.name in {"exemplo_formato.json"} or p.name.startswith("_"):
+            continue
+        dados = json.loads(p.read_text(encoding="utf-8"))
+        if isinstance(dados, dict) and "documento" in dados:
+            refs[p.stem] = dados
     metricas = []
     for json_path in args.resultados.rglob("resultado.json"):
         resultado = json.loads(json_path.read_text(encoding="utf-8"))
@@ -40,6 +42,11 @@ def main() -> int:
             continue
         m = comparar_com_referencia(resultado, ref, tol)
         m["caminho_resultado"] = str(json_path)
+        cond = (
+            resultado.get("experimento", {}).get("condicao")
+            or json_path.parts[-3].replace("condicao_", "").upper()
+        )
+        m["condicao"] = str(cond).upper()
         metricas.append(m)
 
     args.saida.mkdir(parents=True, exist_ok=True)

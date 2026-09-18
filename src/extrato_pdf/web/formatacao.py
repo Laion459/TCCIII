@@ -41,7 +41,7 @@ def classe_status(status: str | None) -> str:
 
 def formatar_brl(valor: float | int | None) -> str:
     if valor is None:
-        return "—"
+        return "-"
     negativo = float(valor) < 0
     absoluto = abs(float(valor))
     partes = f"{absoluto:.2f}".split(".")
@@ -59,12 +59,12 @@ def formatar_periodo(inicio: str | None, fim: str | None) -> str:
         return f"{_data_br(inicio)} → {_data_br(fim)}"
     if inicio or fim:
         return _data_br(inicio or fim or "")
-    return "—"
+    return "-"
 
 
 def _data_br(iso: str) -> str:
     if not iso or len(iso) < 10:
-        return iso or "—"
+        return iso or "-"
     ano, mes, dia = iso[:10].split("-")
     return f"{dia}/{mes}/{ano}"
 
@@ -158,7 +158,7 @@ def montar_regras(dados: dict[str, Any]) -> list[dict[str, Any]]:
         r07_evidencia = f"{formatar_brl(diferenca)} (tol. {formatar_brl(tolerancia)})"
     else:
         r07_status = "falha"
-        r07_evidencia = f"{formatar_brl(diferenca)} — fora da tolerância"
+        r07_evidencia = f"{formatar_brl(diferenca)} - fora da tolerância"
     regras.append(
         {
             "codigo": "R07",

@@ -200,12 +200,19 @@ class GerenciadorJobs:
         with self._lock:
             return self._jobs.get(job_id)
 
+    def tem_job_ativo(self) -> bool:
+        with self._lock:
+            return any(
+                j.status in (StatusJob.PENDENTE, StatusJob.EXECUTANDO)
+                for j in self._jobs.values()
+            )
+
     def cancelar(self, job_id: str) -> bool:
         job = self.obter(job_id)
         if not job or job.status != StatusJob.EXECUTANDO:
             return False
         job.cancelar = True
-        job.mensagem = "Cancelamento solicitado — aguardando parada"
+        job.mensagem = "Cancelamento solicitado - aguardando parada"
         job.adicionar_log("Cancelamento solicitado")
         return True
 

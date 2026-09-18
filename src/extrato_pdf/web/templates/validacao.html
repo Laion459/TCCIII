@@ -5,7 +5,7 @@
   <p class="page-sub">Checa se JSON/TXT/log existem e se o status é válido.</p>
 
   {% if resultado.valido %}
-    <div class="alert ok">OK — {{ resultado.ok }} resultado(s) com estrutura válida.</div>
+    <div class="alert ok">OK - {{ resultado.ok }} resultado(s) com estrutura válida.</div>
   {% else %}
     <div class="alert err">Falhas encontradas ({{ resultado.erros|length }}).</div>
   {% endif %}

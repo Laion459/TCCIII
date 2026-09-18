@@ -58,7 +58,7 @@
           </div>
           <div class="form-row">
             <label for="ocr_workers">Workers paralelos</label>
-            <input type="number" id="ocr_workers" name="ocr_workers" required min="1" max="16" value="{{ cfg.ocr_workers }}" />
+            <input type="number" id="ocr_workers" name="ocr_workers" required min="1" max="8" value="{{ cfg.ocr_workers }}" />
             <span class="field-hint">Páginas OCR em paralelo. Use 1 para desativar.</span>
           </div>
           <div class="form-row">
@@ -90,7 +90,7 @@
 
       <div data-panel="instituicoes" hidden>
         <h2>Instituições (somente leitura)</h2>
-        <p class="muted chart-caption">Padrões de banco ficam em <code>{{ cfg.instituicoes_path }}</code> — edição manual por enquanto.</p>
+        <p class="muted chart-caption">Padrões de banco ficam em <code>{{ cfg.instituicoes_path }}</code> - edição manual por enquanto.</p>
         {% if cfg.instituicoes %}
           <div class="rules-grid">
             {% for inst in cfg.instituicoes %}
@@ -108,7 +108,7 @@
 
       <div data-panel="avancado" hidden>
         <h2>Parâmetros avançados</h2>
-        <p class="muted chart-caption">Estes itens continuam apenas no JSON — evita quebrar regex/pesos pela interface.</p>
+        <p class="muted chart-caption">Estes itens continuam apenas no JSON - evita quebrar regex/pesos pela interface.</p>
         <ul class="config-meta-list">
           <li><strong>Pesos de localização:</strong> {{ cfg.qtd_pesos_localizacao }} padrões em <code>pesos_localizacao</code></li>
           <li><strong>Mapa de IDs:</strong> {{ cfg.qtd_mapa_ids }} documento(s) em <code>mapa_ids_documento</code></li>

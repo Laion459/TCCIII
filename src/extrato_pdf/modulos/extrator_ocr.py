@@ -29,6 +29,7 @@ def _resolver_workers(config: dict[str, Any]) -> int:
     workers = ocr_cfg.get("workers", 1)
     if not isinstance(workers, int) or workers < 1:
         return 1
+    workers = min(workers, 8)
     return min(workers, max(1, (os.cpu_count() or 4)))
 
 
@@ -39,7 +40,7 @@ def _ocr_pagina(
     dpi: int,
     tesseract_cmd: Optional[str],
 ) -> PaginaTexto:
-    """Renderiza e OCR de uma página (abre PDF próprio — seguro para threads)."""
+    """Renderiza e OCR de uma página (abre PDF próprio - seguro para threads)."""
     if tesseract_cmd:
         pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
 

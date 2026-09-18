@@ -10,7 +10,7 @@ def test_formatar_brl_negativo():
 
 
 def test_formatar_brl_none():
-    assert formatar_brl(None) == "—"
+    assert formatar_brl(None) == "-"
 
 
 def test_preparar_relatorio_equacao():

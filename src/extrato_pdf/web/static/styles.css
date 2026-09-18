@@ -1,4 +1,4 @@
-/* ── Design tokens — paleta azul + Montserrat ── */
+/* ── Design tokens - paleta azul + Montserrat ── */
 :root,
 html[data-theme="light"] {
   --bg: #eef2ff;
@@ -493,6 +493,11 @@ button.btn {
   margin-bottom: 1.5rem;
 }
 
+.hero-actions .inline-form {
+  display: inline-flex;
+  margin: 0;
+}
+
 /* ── Cards & panels ── */
 .grid {
   display: grid;
@@ -503,6 +508,78 @@ button.btn {
 .grid-2 {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
 }
+
+.cond-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+.cond-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1rem 1.125rem;
+  background: var(--surface);
+  border-top: 3px solid var(--muted);
+}
+.cond-card--a { border-top-color: var(--chart-a); }
+.cond-card--b { border-top-color: var(--chart-b); }
+.cond-card--c { border-top-color: var(--chart-c); }
+.cond-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.cond-label {
+  font-weight: 700;
+  font-size: 0.9375rem;
+}
+.cond-taxa {
+  font-size: clamp(1.75rem, 3vw, 2.25rem);
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--text);
+}
+.cond-taxa.ok { color: var(--ok); }
+.cond-taxa.warn { color: var(--warn, #d97706); }
+.cond-taxa.err { color: var(--err, #dc2626); }
+.cond-card .status-distribution {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+  align-items: center;
+}
+
+.filter-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+}
+.filter-tab {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.filter-tab:hover { border-color: var(--text); color: var(--text); }
+.filter-tab.is-active {
+  color: #fff;
+  border-color: transparent;
+  background: var(--text);
+}
+.filter-tab--a.is-active { background: var(--chart-a); }
+.filter-tab--b.is-active { background: var(--chart-b); }
+.filter-tab--c.is-active { background: var(--chart-c); }
 
 .card {
   background: var(--surface);

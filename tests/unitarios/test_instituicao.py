@@ -9,6 +9,27 @@ def test_sicoob():
     assert r.ambigua is False
 
 
+def test_caixa():
+    config = carregar_config()
+    r = identificar_instituicao("Extrato por período - Caixa Econômica Federal", config)
+    assert r.nome == "CAIXA"
+    assert r.ambigua is False
+
+
+def test_composto_prefere_layout_caixa():
+    config = carregar_config()
+    texto = (
+        "Menção a SICOOB no rodapé.\n"
+        "Extrato por período\n"
+        "CAIXA\n"
+        "SALDO ANTERIOR\n"
+        "SALDO DIA\n"
+    )
+    r = identificar_instituicao(texto, config)
+    assert r.nome == "CAIXA"
+    assert r.ambigua is False
+
+
 def test_ausente():
     config = carregar_config()
     r = identificar_instituicao("Documento sem banco conhecido", config)

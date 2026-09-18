@@ -3,7 +3,7 @@
 **Pacote:** `extrato_pdf`  
 **Autor:** Leonardo Dario Borges  
 **Orientador:** Marcelo Dornbusch Lopes, M.Sc.  
-**Instituição:** UNIVALI — Ciência da Computação — TCC 3
+**Instituição:** UNIVALI - Ciência da Computação - TCC 3
 
 ## Descrição
 
@@ -30,7 +30,7 @@ pip install -e ".[dev]"
 
 Confirme `ocr.tesseract_cmd` em `config/default.json`. Para OCR mais rápido, ajuste `ocr.workers` (padrão: 4).
 
-## Execução — CLI
+## Execução - CLI
 
 ```powershell
 extrato-pdf "dados\entrada\contas 012025.pdf" --condicao C --saida resultados\experimentos\condicao_c
@@ -38,7 +38,7 @@ extrato-pdf "dados\entrada\contas 012025.pdf" --condicao C --saida resultados\ex
 
 Saída por PDF em `<saida>/<nome>/`: `resultado.json`, `relatorio.txt`, `execucao.log`.
 
-## Execução — interface web
+## Execução - interface web
 
 ```powershell
 extrato-pdf-web
@@ -68,7 +68,7 @@ pytest -q
 
 | Pasta | Uso |
 |-------|-----|
-| `dados/entrada/` | PDFs do experimento (não versionados — LGPD) |
+| `dados/entrada/` | PDFs do experimento (não versionados - LGPD) |
 | `dados/referencia_manual/` | Ground truth manual por documento |
 | `dados/documentos_teste/` | Reservada para fixtures de teste |
 | `resultados/` | Saídas e métricas (local) |
@@ -88,6 +88,6 @@ Requisitos formais e fundamentação: TCC 2 (`tcc2_pronto_posbanca.md`).
 
 ## Limitações
 
-- Piloto calibrado para layout SICOOB (conta corrente).
+- Piloto calibrado para layouts Sicoob e Caixa (conta corrente) presentes na base.
 - Sem deep learning; sem conciliação linha a linha.
-- Referência manual e monografia em elaboração.
+- Corpus sem PDFs escaneados reais; condição C ≡ A na execução atual.

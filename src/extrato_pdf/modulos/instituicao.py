@@ -12,6 +12,28 @@ class ResultadoInstituicao:
     evidencias: list[str]
 
 
+def _preferir_por_layout(texto: str, candidatos: dict[str, str]) -> Optional[str]:
+    """Em PDF composto, prioriza o banco do extrato nativo presente no texto."""
+    up = texto.upper()
+    if "CAIXA" in candidatos and re.search(
+        r"EXTRATO POR PER[IÍ]ODO|CAIXA\.GOV",
+        up,
+    ):
+        return "CAIXA"
+    if "SICOOB" in candidatos and (
+        "EXTRATO CONTA CORRENTE" in up
+        or "HISTÓRICO DE MOVIMENTAÇÃO" in up
+        or "HISTORICO DE MOVIMENTACAO" in up
+    ):
+        return "SICOOB"
+    # marcadores mais fracos
+    if "CAIXA" in candidatos and "SALDO DIA" in up and "SALDO ANTERIOR" in up:
+        return "CAIXA"
+    if "SICOOB" in candidatos and "SALDO EM C" in up:
+        return "SICOOB"
+    return None
+
+
 def identificar_instituicao(
     texto: str,
     config: dict[str, Any],
@@ -30,11 +52,19 @@ def identificar_instituicao(
 
     if not encontrados:
         return ResultadoInstituicao(nome=None, ambigua=False, evidencias=[])
-    if len(encontrados) > 1:
+    if len(encontrados) == 1:
+        nome = next(iter(encontrados.keys()))
+        return ResultadoInstituicao(nome=nome, ambigua=False, evidencias=evidencias)
+
+    preferido = _preferir_por_layout(texto, encontrados)
+    if preferido:
         return ResultadoInstituicao(
-            nome=None,
-            ambigua=True,
+            nome=preferido,
+            ambigua=False,
             evidencias=evidencias,
         )
-    nome = next(iter(encontrados.keys()))
-    return ResultadoInstituicao(nome=nome, ambigua=False, evidencias=evidencias)
+    return ResultadoInstituicao(
+        nome=None,
+        ambigua=True,
+        evidencias=evidencias,
+    )

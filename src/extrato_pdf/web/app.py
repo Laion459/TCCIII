@@ -43,7 +43,7 @@ TEMPLATES.env.globals["formatar_brl"] = formatar_brl
 TEMPLATES.env.globals["static_v"] = STATIC_VERSION
 
 app = FastAPI(
-    title="Extrato PDF — TCC 3",
+    title="Extrato PDF - TCC 3",
     description="Interface local para extração e validação de extratos bancários",
 )
 
@@ -116,13 +116,35 @@ async def _stream_job(job_id: str):
 
 
 @app.get("/", response_class=HTMLResponse)
-def painel(request: Request):
+def painel(request: Request, ok: str | None = None, erro: str | None = None):
+    mensagens_ok = {
+        "limpo": (
+            "Resultados limpos. Experimentos e métricas foram removidos; "
+            "PDFs de entrada e referências manuais foram preservados."
+        ),
+    }
+    mensagens_erro = {
+        "job_ativo": (
+            "Há um processamento em andamento. Cancele ou aguarde antes de limpar."
+        ),
+    }
     return render(
         request,
         "painel.html",
         ativo="painel",
         resumo=servicos.resumo_dashboard(),
+        ok=mensagens_ok.get(ok, ok),
+        erro=mensagens_erro.get(erro, erro),
     )
+
+
+@app.post("/painel/limpar-resultados")
+def limpar_resultados_painel():
+    try:
+        servicos.limpar_resultados()
+    except RuntimeError:
+        return RedirectResponse("/?erro=job_ativo", status_code=303)
+    return RedirectResponse("/?ok=limpo", status_code=303)
 
 
 @app.get("/pdfs", response_class=HTMLResponse)
@@ -258,12 +280,17 @@ def api_cancelar_job(job_id: str):
 
 
 @app.get("/resultados", response_class=HTMLResponse)
-def resultados(request: Request):
+def resultados(request: Request, condicao: str | None = None):
+    cond = (condicao or "").strip().upper() or None
+    if cond and cond not in ("A", "B", "C"):
+        cond = None
     return render(
         request,
         "resultados.html",
         ativo="resultados",
-        itens=servicos.listar_resultados(),
+        itens=servicos.listar_resultados(condicao=cond),
+        filtro_condicao=cond,
+        condicoes=("A", "B", "C"),
     )
 
 
@@ -379,7 +406,7 @@ def main() -> None:
         "extrato_pdf.web.app:app",
         host="127.0.0.1",
         port=8000,
-        reload=False,
+        reload=True,
     )
 
 

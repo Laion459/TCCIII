@@ -1,4 +1,4 @@
-# Arquitetura — extrato_pdf
+# Arquitetura - extrato_pdf
 
 ```
 PDF → Validador → Extrator nativo → Classificador → Estratégia textual (A/B/C)
@@ -33,10 +33,10 @@ PDF → Validador → Extrator nativo → Classificador → Estratégia textual 
 
 ## Pacotes
 
-- `cli` — interface de linha de comando
-- `pipeline` — orquestração (Algoritmo 1)
-- `modelos` — dataclasses / enums
-- `util` — configuração
-- `web` — interface local FastAPI (painel, lote, métricas, configuração)
+- `cli` - interface de linha de comando
+- `pipeline` - orquestração (Algoritmo 1)
+- `modelos` - dataclasses / enums
+- `util` - configuração
+- `web` - interface local FastAPI (painel, lote, métricas, configuração)
 
 Especificação completa: `docs/especificacao_tecnica.md`.

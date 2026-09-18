@@ -1,4 +1,4 @@
-# Decisões técnicas — status na implementação
+# Decisões técnicas - status na implementação
 
 Atualizado após implementação inicial do TCC 3.
 
@@ -15,7 +15,7 @@ Atualizado após implementação inicial do TCC 3.
 | DP09 | TXT/log | Relatório humano + log com etapas/versões | Resolvido |
 | DP10 | JSON falha | `null` + `status_processamento` + `alertas` | Resolvido |
 | DP11 | 20 PDFs | Código aceita N; base ampliada a cargo do autor | Pendente (dados) |
-| DP12 | Limiar localização | 8 (config) | Resolvido |
+| DP12 | Limiar localização | 25 (config) | Resolvido |
 | DP13 | Divergência nativo/OCR | Alerta textual → `revisao_necessaria` via regras | Parcial (heurística simples) |
 | DP14 | Empacotamento | `pyproject.toml` + `requirements.txt`; Python ≥ 3.11 | Resolvido |
 | DP15 | LGPD | `.gitignore` em PDFs/resultados; não versionar PII | Resolvido (política) |

@@ -2,7 +2,23 @@
 {% block title %}Resultados{% endblock %}
 {% block content %}
   <h1 class="page-title">Resultados</h1>
-  <p class="page-sub">Todos os <code>resultado.json</code> encontrados sob <code>resultados/</code>.</p>
+  <p class="page-sub">
+    {% if filtro_condicao %}
+      Filtrado pela condição <strong>{{ filtro_condicao }}</strong>
+      (<code>resultados/experimentos/condicao_{{ filtro_condicao | lower }}/</code>).
+    {% else %}
+      Todos os <code>resultado.json</code> sob <code>resultados/</code>. Use o filtro para comparar A, B e C sem misturar.
+    {% endif %}
+  </p>
+
+  <nav class="filter-tabs" aria-label="Filtrar por condição">
+    <a class="filter-tab{% if not filtro_condicao %} is-active{% endif %}" href="/resultados">Todas</a>
+    {% for c in condicoes %}
+      <a class="filter-tab filter-tab--{{ c | lower }}{% if filtro_condicao == c %} is-active{% endif %}" href="/resultados?condicao={{ c }}">
+        Condição {{ c }}
+      </a>
+    {% endfor %}
+  </nav>
 
   <div class="panel">
     <div class="table-wrap">
@@ -15,7 +31,7 @@
         <tr>
           <td>{{ r.arquivo }}</td>
           <td class="muted">{{ r.caminho_relativo }}</td>
-          <td>{{ r.condicao or '-' }}</td>
+          <td><span class="badge info">{{ r.condicao or '-' }}</span></td>
           <td>
             <span class="badge {% if r.status == 'consistente' %}ok{% elif r.status in ['incompleto','revisao_necessaria'] %}warn{% else %}err{% endif %}">
               {{ r.status }}
@@ -25,7 +41,7 @@
           <td><a href="/resultados/ver?path={{ r.caminho_relativo }}">detalhe</a></td>
         </tr>
         {% else %}
-        <tr><td colspan="6" class="muted">Nenhum resultado.</td></tr>
+        <tr><td colspan="6" class="muted">Nenhum resultado{% if filtro_condicao %} na condição {{ filtro_condicao }}{% endif %}.</td></tr>
         {% endfor %}
       </tbody>
     </table>

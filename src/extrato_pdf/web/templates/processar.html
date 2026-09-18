@@ -27,9 +27,9 @@
       <div class="form-row">
         <label for="condicao">Condição experimental</label>
         <select id="condicao" name="condicao">
-          <option value="A" {% if condicao == 'A' %}selected{% endif %}>A — só nativo (rápido)</option>
-          <option value="C" {% if not condicao or condicao == 'C' %}selected{% endif %}>C — integrada (recomendado)</option>
-          <option value="B" {% if condicao == 'B' %}selected{% endif %}>B — só OCR (lento)</option>
+          <option value="A" {% if condicao == 'A' %}selected{% endif %}>A - só nativo (rápido)</option>
+          <option value="C" {% if not condicao or condicao == 'C' %}selected{% endif %}>C - integrada (recomendado)</option>
+          <option value="B" {% if condicao == 'B' %}selected{% endif %}>B - só OCR (lento)</option>
         </select>
       </div>
       <button class="btn" type="submit" id="btn-processar">Processar</button>

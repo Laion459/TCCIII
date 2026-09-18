@@ -69,8 +69,8 @@ def _validar_config(config: dict[str, Any]) -> None:
     if not isinstance(ocr.get("dpi"), int):
         raise ConfigInvalidaError("ocr.dpi deve ser inteiro")
     workers = ocr.get("workers", 1)
-    if not isinstance(workers, int) or workers < 1:
-        raise ConfigInvalidaError("ocr.workers deve ser inteiro >= 1")
+    if not isinstance(workers, int) or workers < 1 or workers > 8:
+        raise ConfigInvalidaError("ocr.workers deve ser inteiro entre 1 e 8")
     config["tolerancia_monetaria"] = Decimal(str(config["tolerancia_monetaria"]))
 
 

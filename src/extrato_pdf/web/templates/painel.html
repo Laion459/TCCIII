@@ -6,34 +6,68 @@
   <header class="page-header">
     <div>
       <h1 class="page-title">Painel</h1>
-      <p class="page-sub">Visão geral do corpus, taxa de consistência e últimas execuções.</p>
+      <p class="page-sub">Visão geral e taxas de consistência <strong>separadas por condição</strong> A / B / C (sem misturar).</p>
     </div>
   </header>
+
+  {% if ok %}<div class="alert ok">{{ ok }}</div>{% endif %}
+  {% if erro %}<div class="alert err">{{ erro }}</div>{% endif %}
 
   <div class="hero-actions">
     <a class="btn" href="/lote">Iniciar experimento em lote</a>
     <a class="btn secondary" href="/processar">Processar um PDF</a>
     <a class="btn secondary" href="/metricas">Métricas experimentais</a>
+    <form
+      method="post"
+      action="/painel/limpar-resultados"
+      class="inline-form"
+      onsubmit="return confirm('Limpar TODOS os resultados, experimentos e métricas gerados?\n\nPDFs de entrada e referências manuais NÃO serão apagados.');"
+    >
+      <button type="submit" class="btn danger" {% if resumo.qtd_resultados == 0 %}disabled title="Nada para limpar"{% endif %}>
+        Limpar resultados
+      </button>
+    </form>
   </div>
 
   <div class="grid">
     {{ stat_card("PDFs em entrada", resumo.qtd_pdfs) }}
-    {{ stat_card("Resultados gerados", resumo.qtd_resultados) }}
-    {{ stat_card("Taxa consistência", resumo.taxa_consistencia ~ "%", "sobre resultados existentes", "ok" if resumo.taxa_consistencia >= 50 else "warn") }}
+    {{ stat_card("Execuções geradas", resumo.qtd_resultados, "soma A+B+C (arquivos)") }}
     {{ stat_card("Referências manuais", resumo.qtd_referencias) }}
   </div>
 
   <div class="panel">
-    <h2>Status agregados</h2>
-    {% if resumo.por_status %}
-      <div class="status-distribution">
-        {% for status, qtd in resumo.por_status.items() %}
-          {{ badge_status(status) }}
-          <span class="muted">× {{ qtd }}</span>
+    <h2>Consistência por condição</h2>
+    <p class="muted chart-caption">
+      Cada taxa usa apenas os resultados da própria condição. Misturar A+B+C no mesmo percentual distorce a comparação experimental.
+    </p>
+    {% set tem_algum = resumo.por_condicao | selectattr('total') | list %}
+    {% if tem_algum %}
+      <div class="cond-grid">
+        {% for c in resumo.por_condicao %}
+          <article class="cond-card cond-card--{{ c.condicao | lower }}">
+            <header class="cond-card-head">
+              <span class="cond-label">Condição {{ c.condicao }}</span>
+              <a class="muted" href="{{ c.href_resultados }}">ver resultados</a>
+            </header>
+            <div class="cond-taxa {% if c.taxa_consistente >= 80 %}ok{% elif c.taxa_consistente >= 50 %}warn{% else %}err{% endif %}">
+              {{ c.taxa_consistente }}%
+            </div>
+            <p class="stat-hint">taxa <code>consistente</code> · {{ c.total }} PDF(s)</p>
+            {% if c.por_status %}
+              <div class="status-distribution">
+                {% for status, qtd in c.por_status.items() %}
+                  {{ badge_status(status) }}
+                  <span class="muted">× {{ qtd }}</span>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="muted">Sem execuções nesta condição.</p>
+            {% endif %}
+          </article>
         {% endfor %}
       </div>
     {% else %}
-      {{ empty_state("Nenhum resultado ainda", "Processe PDFs em lote ou unitariamente para popular o dashboard.", "Ir para lote", "/lote") }}
+      {{ empty_state("Nenhum resultado ainda", "Processe PDFs em lote (A, B e C) para popular o dashboard por condição.", "Ir para lote", "/lote") }}
     {% endif %}
   </div>
 
@@ -45,7 +79,7 @@
           <li>
             <div>
               <strong>{{ r.arquivo }}</strong>
-              <span class="muted"> · cond. {{ r.condicao or '—' }}</span>
+              <span class="muted"> · cond. {{ r.condicao or '-' }}</span>
             </div>
             <div class="actions">
               {{ badge_status(r.status) }}

@@ -20,7 +20,7 @@
           <span>{{ d.extrato.instituicao or 'Instituição não identificada' }}</span>
           <span>{{ per.inicio | periodo(per.fim) }}</span>
           <span>{{ d.documento.quantidade_paginas or '?' }} páginas</span>
-          <span>PDF {{ d.documento.tipo_pdf or '—' }}</span>
+          <span>PDF {{ d.documento.tipo_pdf or '-' }}</span>
           <span>Condição {{ d.experimento.condicao }}</span>
         </div>
       </div>
@@ -119,7 +119,7 @@
       <div data-panel="tecnico" hidden>
         <table>
           <tr><th>ID documento</th><td>{{ d.documento.id }}</td></tr>
-          <tr><th>Tipo conta</th><td>{{ d.extrato.tipo_conta or '—' }}</td></tr>
+          <tr><th>Tipo conta</th><td>{{ d.extrato.tipo_conta or '-' }}</td></tr>
           <tr><th>Limiar localização</th><td>{{ d.experimento.parametros.limiar_localizacao }}</td></tr>
           <tr><th>OCR DPI / workers</th><td>{{ d.experimento.parametros.ocr_dpi }} / {{ d.experimento.parametros.ocr_workers }}</td></tr>
           <tr><th>Versão extrato_pdf</th><td>{{ d.experimento.versoes.extrato_pdf }}</td></tr>

@@ -128,7 +128,7 @@
         const cols = condicoes
           .map((c) => {
             const st = row[c];
-            const label = st || "—";
+            const label = st || "-";
             return `<td><span class="heatmap-cell ${classeHeatmap(st)}" title="${label}">${label.slice(0, 4)}</span></td>`;
           })
           .join("");

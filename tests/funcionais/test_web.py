@@ -43,7 +43,18 @@ def test_painel_resumo():
     resp = client.get("/")
     assert resp.status_code == 200
     assert "Painel" in resp.text
-    assert "Taxa consistência" in resp.text
+    assert "Consistência por condição" in resp.text
+    assert "Condição A" in resp.text
+    assert "Condição B" in resp.text
+    assert "Condição C" in resp.text
+
+
+def test_resultados_filtro_condicao():
+    client = TestClient(app)
+    resp = client.get("/resultados?condicao=A")
+    assert resp.status_code == 200
+    assert "Condição A" in resp.text
+    assert "filter-tab" in resp.text
 
 
 def test_metricas_pagina():

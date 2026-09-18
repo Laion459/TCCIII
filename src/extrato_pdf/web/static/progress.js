@@ -1,5 +1,5 @@
 /**
- * Acompanhamento de jobs (SSE) — lote e processamento unitário.
+ * Acompanhamento de jobs (SSE) - lote e processamento unitário.
  */
 (function () {
   const ETAPAS = [
@@ -14,7 +14,7 @@
   ];
 
   function fmtSegundos(s) {
-    if (s == null || Number.isNaN(s)) return "—";
+    if (s == null || Number.isNaN(s)) return "-";
     const n = Math.max(0, Math.round(s));
     const m = Math.floor(n / 60);
     const r = n % 60;
@@ -109,7 +109,7 @@
       if (ativo && subLabel) {
         const sp = job.sub_progresso;
         subLabel.textContent =
-          `OCR: ${sp.concluidas}/${sp.total} páginas (${sp.workers} workers) — ${job.percentual_sub ?? 0}%`;
+          `OCR: ${sp.concluidas}/${sp.total} páginas (${sp.workers} workers) - ${job.percentual_sub ?? 0}%`;
       }
     }
 
@@ -121,7 +121,7 @@
       if (job.arquivo_atual && job.sub_progresso && job.sub_progresso.total > 0) {
         const sp = job.sub_progresso;
         atual.textContent =
-          `${job.arquivo_atual} — OCR ${sp.concluidas}/${sp.total} páginas (${sp.workers} workers)`;
+          `${job.arquivo_atual} - OCR ${sp.concluidas}/${sp.total} páginas (${sp.workers} workers)`;
       } else if (job.arquivo_atual) {
         atual.textContent = job.mensagem || `Arquivo atual: ${job.arquivo_atual}`;
       } else if (job.status === "concluido") {
@@ -158,8 +158,8 @@
           return `<tr class="row-${item.status}">
             <td>${icon} ${item.arquivo}</td>
             <td><span class="badge ${badgeClass(st)}">${st}</span></td>
-            <td>${item.instituicao || item.erro || item.mensagem || "—"}</td>
-            <td>${item.duracao_s ? item.duracao_s + "s" : "—"}</td>
+            <td>${item.instituicao || item.erro || item.mensagem || "-"}</td>
+            <td>${item.duracao_s ? item.duracao_s + "s" : "-"}</td>
             <td>${link}</td>
           </tr>`;
         })
