@@ -32,6 +32,19 @@ class CondicaoExperimental(str, Enum):
     C = "C"
 
 
+METODO_PONTUACAO = "pontuacao"
+METODO_CABECALHO_SICOOB = "cabecalho_sicoob"
+METODO_CABECALHO_CAIXA = "cabecalho_caixa"
+METODO_FALLBACK = "fallback_generico"
+METODOS_SEM_PONTUACAO = frozenset(
+    {
+        METODO_CABECALHO_SICOOB,
+        METODO_CABECALHO_CAIXA,
+        METODO_FALLBACK,
+    }
+)
+
+
 def decimal_para_json(valor: Optional[Decimal]) -> Optional[float]:
     if valor is None:
         return None
@@ -43,6 +56,8 @@ class PaginaTexto:
     numero: int
     texto: str
     origem: OrigemTexto
+    falha_ocr: bool = False
+    erro_ocr: Optional[str] = None
 
 
 @dataclass
@@ -73,6 +88,11 @@ class CamposExtraidos:
     saldo_final_informado: Optional[Decimal] = None
     ambiguidade_instituicao: bool = False
     paginas_utilizadas: list[int] = field(default_factory=list)
+    total_entradas_extraido: Optional[Decimal] = None
+    total_entradas_inferido: Optional[Decimal] = None
+    divergencia_entradas_identidade: bool = False
+    metodo_localizacao: Optional[str] = None
+    layout: Optional[str] = None
 
 
 @dataclass
@@ -91,6 +111,7 @@ class ResultadoValidacao:
     tolerancia: Decimal
     saldo_final_calculado: Optional[Decimal] = None
     diferenca: Optional[Decimal] = None
+    completo: bool = False
     itens: list[ItemValidacao] = field(default_factory=list)
     alertas: list[str] = field(default_factory=list)
 
@@ -136,9 +157,13 @@ class ResultadoProcessamento:
                 "saldo_final_informado": decimal_para_json(c.saldo_final_informado),
                 "saldo_final_calculado": decimal_para_json(v.saldo_final_calculado),
                 "diferenca": decimal_para_json(v.diferenca),
+                "total_entradas_extraido": decimal_para_json(c.total_entradas_extraido),
+                "total_entradas_inferido": decimal_para_json(c.total_entradas_inferido),
+                "entradas_divergem_identidade": c.divergencia_entradas_identidade,
             },
             "validacao": {
                 "consistente": v.consistente,
+                "completo": v.completo,
                 "tolerancia": decimal_para_json(v.tolerancia),
                 "revisao_humana": v.revisao_humana,
                 "status_processamento": v.status_processamento.value,
@@ -149,5 +174,15 @@ class ResultadoProcessamento:
                 "versoes": dict(self.versoes),
                 "parametros": dict(self.parametros),
                 "paginas_extrato": list(c.paginas_utilizadas),
+                "metodo_localizacao": c.metodo_localizacao,
+                "layout": c.layout,
+                "paginas_pontuadas": [
+                    {
+                        "numero": pagina.numero,
+                        "score": pagina.score,
+                        "evidencias": list(pagina.evidencias),
+                    }
+                    for pagina in self.paginas_pontuadas
+                ],
             },
         }

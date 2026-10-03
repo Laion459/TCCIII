@@ -12,6 +12,7 @@ from typing import Any, Callable, Optional
 from extrato_pdf.modelos import CondicaoExperimental
 from extrato_pdf.modulos.metricas import comparar_com_referencia
 from extrato_pdf.pipeline import processar_pdf
+from extrato_pdf.modulos.localizador import soma_pesos_positivos
 from extrato_pdf.util.config import (
     ConfigInvalidaError,
     carregar_config,
@@ -664,7 +665,13 @@ def salvar_config_ui(dados: dict[str, Any]) -> None:
     atual = carregar_json(path)
 
     atual["tolerancia_monetaria"] = float(dados["tolerancia_monetaria"])
-    atual["limiar_localizacao"] = int(dados["limiar_localizacao"])
+    limiar = int(dados["limiar_localizacao"])
+    teto = soma_pesos_positivos(atual["pesos_localizacao"])
+    if limiar > teto:
+        raise ConfigInvalidaError(
+            f"limiar_localizacao ({limiar}) excede a soma dos pesos positivos ({teto})"
+        )
+    atual["limiar_localizacao"] = limiar
 
     classif = atual.setdefault("classificacao_pdf", {})
     classif["min_caracteres_pagina_com_texto"] = int(dados["min_caracteres_pagina"])

@@ -58,8 +58,14 @@ def _ocr_pagina(
             raise OcrIndisponivelError(
                 "Tesseract não encontrado. Configure ocr.tesseract_cmd."
             ) from exc
-        except Exception:  # noqa: BLE001
-            texto = ""
+        except Exception as exc:  # noqa: BLE001
+            return PaginaTexto(
+                numero=numero,
+                texto="",
+                origem=OrigemTexto.OCR,
+                falha_ocr=True,
+                erro_ocr=f"{type(exc).__name__}: {exc}",
+            )
         return PaginaTexto(numero=numero, texto=texto, origem=OrigemTexto.OCR)
     finally:
         doc.close()

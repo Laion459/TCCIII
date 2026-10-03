@@ -1,6 +1,7 @@
 {
   "tolerancia_monetaria": 0.01,
-  "limiar_localizacao": 25,
+  "limiar_localizacao": 8,
+  "comentario_limiar_localizacao": "Limiar 8 = extrato (+5) + saldo (+3), o par mínimo das categorias mais fortes. A soma dos pesos positivos é 20. O valor 25 não selecionava nenhuma página. Nos documentos de desenvolvimento D01-D03 o cabeçalho do extrato pontua 15, 16 e 20, acima deste limiar.",
   "pesos_localizacao": {
     "extrato|extrato de conta|extrato conta corrente|extrato por per[ií]odo": 5,
     "saldo|saldo anterior|saldo final|saldo em c.corrente|saldo dia": 3,

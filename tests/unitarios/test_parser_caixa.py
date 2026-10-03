@@ -57,22 +57,55 @@ SALDO DIA
 
 
 def test_parser_caixa_br_rotulos_e_debitos():
-    si, e, s, sf, pi, pf = agregar_movimentos_caixa(SNIPPET_CAIXA_BR)
-    assert si == Decimal("4856.97")
-    assert sf == Decimal("6921.05")
-    assert s == Decimal("100.00")
-    # identidade sf - si + saidas
-    assert e == Decimal("2164.08")
-    assert pi == "2023-02-01"
-    assert pf == "2023-02-28"
+    agregado = agregar_movimentos_caixa(SNIPPET_CAIXA_BR)
+    assert agregado.saldo_inicial == Decimal("4856.97")
+    assert agregado.saldo_final == Decimal("6921.05")
+    assert agregado.total_saidas == Decimal("100.00")
+    assert agregado.total_entradas == Decimal("5000.00")
+    assert agregado.total_entradas_inferido == Decimal("2164.08")
+    assert agregado.entradas_divergem_identidade is True
+    assert agregado.periodo_inicio == "2023-02-01"
+    assert agregado.periodo_fim == "2023-02-28"
 
 
 def test_parser_caixa_us_movimentos():
-    si, e, s, sf, _pi, _pf = agregar_movimentos_caixa(SNIPPET_CAIXA_US)
-    assert si == Decimal("0.00")
-    assert e == Decimal("1000.00")
-    assert s == Decimal("200.00")
-    assert sf == Decimal("800.00")
+    agregado = agregar_movimentos_caixa(SNIPPET_CAIXA_US)
+    assert agregado.saldo_inicial == Decimal("0.00")
+    assert agregado.total_entradas == Decimal("1000.00")
+    assert agregado.total_saidas == Decimal("200.00")
+    assert agregado.saldo_final == Decimal("800.00")
+    assert agregado.entradas_divergem_identidade is False
+
+
+def test_periodo_de_mes_usa_ultimo_dia_civil():
+    assert agregar_movimentos_caixa("Mês: janeiro/2023").periodo_fim == "2023-01-31"
+    assert agregar_movimentos_caixa("Mês: abril/2023").periodo_fim == "2023-04-30"
+    assert agregar_movimentos_caixa("Mês: fevereiro/2024").periodo_fim == "2024-02-29"
+    assert agregar_movimentos_caixa("Mês: fevereiro/2023").periodo_fim == "2023-02-28"
+
+
+def test_intervalo_explicito_precede_o_mes():
+    texto = "PERÍODO: 05/01/2023 - 20/01/2023\nMês: janeiro/2023"
+    agregado = agregar_movimentos_caixa(texto)
+    assert agregado.periodo_inicio == "2023-01-05"
+    assert agregado.periodo_fim == "2023-01-20"
+
+
+def test_sem_credito_preserva_valor_lido():
+    texto = """
+Extrato por período
+CAIXA
+Mês: janeiro/2023
+SALDO ANTERIOR
+100,00 C
+SALDO DIA
+130,00 C
+"""
+    agregado = agregar_movimentos_caixa(texto)
+    assert agregado.total_entradas == Decimal("0.00")
+    assert agregado.total_entradas_inferido == Decimal("30.00")
+    assert agregado.entradas_divergem_identidade is True
+    assert agregado.periodo_fim == "2023-01-31"
 
 
 def test_extrair_campos_caixa_br_snippet():
@@ -83,7 +116,9 @@ def test_extrair_campos_caixa_br_snippet():
     assert campos.saldo_inicial == Decimal("4856.97")
     assert campos.saldo_final_informado == Decimal("6921.05")
     assert campos.total_saidas == Decimal("100.00")
-    assert campos.total_entradas == Decimal("2164.08")
+    assert campos.total_entradas == Decimal("5000.00")
+    assert campos.total_entradas_inferido == Decimal("2164.08")
+    assert campos.divergencia_entradas_identidade is True
 
 
 def test_identificar_caixa():

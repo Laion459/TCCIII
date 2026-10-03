@@ -91,4 +91,4 @@ Requisitos formais e fundamentação: TCC 2 (`tcc2_pronto_posbanca.md`).
 
 - Piloto calibrado para layouts Sicoob e Caixa (conta corrente) presentes na base.
 - Sem deep learning; sem conciliação linha a linha.
-- Corpus sem PDFs escaneados reais; condição C ≡ A na execução atual.
+- Corpus sem PDFs escaneados reais com referência manual. Na condição C, OCR é aplicado às páginas com menos de 40 caracteres, inclusive quando o documento foi classificado como nativo.

@@ -52,3 +52,26 @@ def test_revisao_ambiguidade():
     c.ambiguidade_instituicao = True
     r = aplicar_regras(c, Decimal("0.01"))
     assert r.status_processamento == StatusProcessamento.REVISAO_NECESSARIA
+    assert r.consistente is True
+    assert r.revisao_humana is True
+
+
+def test_fechamento_sem_instituicao_e_periodo_nao_aprova():
+    c = _campos_jan()
+    c.instituicao = None
+    c.periodo_inicio = None
+    c.periodo_fim = None
+    r = aplicar_regras(c, Decimal("0.01"))
+    assert r.consistente is True
+    assert r.completo is False
+    assert r.revisao_humana is True
+    assert r.status_processamento == StatusProcessamento.INCOMPLETO
+
+
+def test_cabecalho_sem_pontuacao_exige_revisao():
+    c = _campos_jan()
+    c.metodo_localizacao = "cabecalho_sicoob"
+    r = aplicar_regras(c, Decimal("0.01"))
+    assert r.consistente is True
+    assert r.completo is True
+    assert r.status_processamento == StatusProcessamento.REVISAO_NECESSARIA

@@ -4,7 +4,15 @@ import re
 from decimal import Decimal
 from typing import Any, Optional
 
-from extrato_pdf.modelos import CamposExtraidos, PaginaPontuada, PaginaTexto
+from extrato_pdf.modelos import (
+    METODO_CABECALHO_CAIXA,
+    METODO_CABECALHO_SICOOB,
+    METODO_FALLBACK,
+    METODO_PONTUACAO,
+    CamposExtraidos,
+    PaginaPontuada,
+    PaginaTexto,
+)
 from extrato_pdf.modulos.instituicao import identificar_instituicao
 from extrato_pdf.modulos.normalizador import (
     ErroNormalizacaoMonetaria,
@@ -345,6 +353,30 @@ def _extrair_periodo(texto: str) -> tuple[Optional[str], Optional[str]]:
     return None, None
 
 
+def _metodo_localizacao(
+    layout: str,
+    numeros: list[int],
+    pontuadas: list[PaginaPontuada],
+    limiar: int,
+) -> str:
+    """A região continua sendo aberta pelo cabeçalho e estendida por continuidade.
+
+    pontuacao significa que a página inicial também atingiu o limiar.
+    """
+    scores = {pagina.numero: pagina.score for pagina in pontuadas}
+    inicio = numeros[0] if numeros else None
+    abertura_pontuada = inicio is not None and scores.get(inicio, -1) >= limiar
+    if layout == "generico":
+        return METODO_PONTUACAO if pontuadas else METODO_FALLBACK
+    if abertura_pontuada:
+        return METODO_PONTUACAO
+    if layout == "sicoob_cc":
+        return METODO_CABECALHO_SICOOB
+    if layout == "caixa_periodo":
+        return METODO_CABECALHO_CAIXA
+    return METODO_FALLBACK
+
+
 def extrair_campos(
     paginas: list[PaginaTexto],
     pontuadas: list[PaginaPontuada],
@@ -352,16 +384,27 @@ def extrair_campos(
 ) -> CamposExtraidos:
     texto, nums, layout = _selecionar_texto_regiao(paginas, pontuadas)
     inst = identificar_instituicao(texto, config)
+    metodo = _metodo_localizacao(
+        layout, nums, pontuadas, int(config.get("limiar_localizacao", 8))
+    )
 
     saldo_inicial = total_entradas = total_saidas = saldo_final = None
     periodo_inicio = periodo_fim = None
+    entradas_inferido = None
+    entradas_divergem = False
 
     if layout == "caixa_periodo" or (
         layout == "generico" and texto_parece_caixa(texto)
     ):
-        saldo_inicial, total_entradas, total_saidas, saldo_final, periodo_inicio, periodo_fim = (
-            agregar_movimentos_caixa(texto)
-        )
+        agregado = agregar_movimentos_caixa(texto)
+        saldo_inicial = agregado.saldo_inicial
+        total_entradas = agregado.total_entradas
+        total_saidas = agregado.total_saidas
+        saldo_final = agregado.saldo_final
+        periodo_inicio = agregado.periodo_inicio
+        periodo_fim = agregado.periodo_fim
+        entradas_inferido = agregado.total_entradas_inferido
+        entradas_divergem = agregado.entradas_divergem_identidade
         if inst.nome is None and not inst.ambigua:
             inst_nome = "CAIXA"
         else:
@@ -390,4 +433,9 @@ def extrair_campos(
         saldo_final_informado=saldo_final,
         ambiguidade_instituicao=inst.ambigua and inst_nome is None,
         paginas_utilizadas=nums,
+        total_entradas_extraido=total_entradas if total_entradas is not None else None,
+        total_entradas_inferido=entradas_inferido,
+        divergencia_entradas_identidade=entradas_divergem,
+        metodo_localizacao=metodo,
+        layout=layout,
     )

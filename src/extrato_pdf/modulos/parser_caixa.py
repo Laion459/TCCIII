@@ -1,7 +1,9 @@
 """Parser nativo do extrato Caixa 'Extrato por período' (layouts BR e US)."""
 from __future__ import annotations
 
+import calendar
 import re
+from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional
 
@@ -28,6 +30,10 @@ _RE_CAIXA_CONTA_ALT = re.compile(
 )
 _RE_NUM_US = re.compile(r"^-?\d+\.\d{2}$")
 _RE_MES = re.compile(r"M[eê]s:\s*(\w+)/(\d{4})", re.I)
+_RE_INTERVALO = re.compile(
+    r"PER[IÍ]ODO\s*:\s*(\d{2}/\d{2}/\d{4})\s*[-–]\s*(\d{2}/\d{2}/\d{4})",
+    re.IGNORECASE,
+)
 
 _MESES = {
     "janeiro": "01",
@@ -50,6 +56,20 @@ def texto_parece_caixa(texto: str) -> bool:
     return bool(_RE_CAIXA_MARCA.search(texto))
 
 
+@dataclass(frozen=True)
+class AgregadoCaixa:
+    """Valores lidos no texto. A identidade contábil fica só como diagnóstico."""
+
+    saldo_inicial: Optional[Decimal]
+    total_entradas: Optional[Decimal]
+    total_saidas: Optional[Decimal]
+    saldo_final: Optional[Decimal]
+    periodo_inicio: Optional[str]
+    periodo_fim: Optional[str]
+    total_entradas_inferido: Optional[Decimal] = None
+    entradas_divergem_identidade: bool = False
+
+
 def _q(valor: Decimal) -> Decimal:
     return valor.quantize(Q, rounding=ROUND_HALF_UP)
 
@@ -59,12 +79,22 @@ def _cortar_lancamentos_do_dia(texto: str) -> str:
     return re.split(r"Lan[cç]amentos do Dia", texto, flags=re.I)[0]
 
 
+def _iso_de_data_br(data_br: str) -> str:
+    dia, mes, ano = data_br.split("/")
+    return f"{ano}-{mes}-{dia}"
+
+
 def _periodo_caixa(texto: str) -> tuple[Optional[str], Optional[str]]:
+    intervalo = _RE_INTERVALO.search(texto)
+    if intervalo:
+        return _iso_de_data_br(intervalo.group(1)), _iso_de_data_br(intervalo.group(2))
+
     mm = _RE_MES.search(texto)
     if mm and mm.group(1).lower() in _MESES:
-        y = mm.group(2)
-        m = _MESES[mm.group(1).lower()]
-        return f"{y}-{m}-01", f"{y}-{m}-28"
+        ano = int(mm.group(2))
+        mes = int(_MESES[mm.group(1).lower()])
+        ultimo = calendar.monthrange(ano, mes)[1]
+        return f"{ano:04d}-{mes:02d}-01", f"{ano:04d}-{mes:02d}-{ultimo:02d}"
 
     datas = re.findall(r"\b(\d{2}/\d{2}/\d{4})\b", texto)
     if datas:
@@ -139,14 +169,20 @@ def _agregar_caixa_br(texto: str) -> tuple[
                 i += 2
                 continue
         i += 1
-    entradas = _q(entradas)
+    return si, _q(entradas), saidas, sf
 
-    if si is not None and sf is not None:
-        esperado = _q(saidas + (sf - si))
-        if abs(entradas - esperado) > TOL:
-            entradas = esperado
 
-    return si, entradas if si is not None else None, saidas, sf
+def _diagnosticar_entradas(
+    saldo_inicial: Optional[Decimal],
+    entradas: Optional[Decimal],
+    saidas: Optional[Decimal],
+    saldo_final: Optional[Decimal],
+) -> tuple[Optional[Decimal], bool]:
+    """Calcula E = saídas + saldo_final − saldo_inicial sem substituir o valor lido."""
+    if None in (saldo_inicial, entradas, saidas, saldo_final):
+        return None, False
+    inferido = _q(saidas + (saldo_final - saldo_inicial))
+    return inferido, abs(entradas - inferido) > TOL
 
 
 def _agregar_caixa_us(texto: str) -> tuple[
@@ -207,21 +243,24 @@ def _agregar_caixa_us(texto: str) -> tuple[
     )
 
 
-def agregar_movimentos_caixa(texto: str) -> tuple[
-    Optional[Decimal],
-    Optional[Decimal],
-    Optional[Decimal],
-    Optional[Decimal],
-    Optional[str],
-    Optional[str],
-]:
-    """Retorna si, entradas, saidas, sf, periodo_inicio, periodo_fim."""
+def agregar_movimentos_caixa(texto: str) -> AgregadoCaixa:
+    """Lê saldos e movimentos. A identidade contábil não altera total_entradas."""
     texto = _cortar_lancamentos_do_dia(texto)
     pi, pf = _periodo_caixa(texto)
 
     if re.search(r"[\d.]+,\d{2}\s*[CD]\b", texto, re.I):
-        si, e, s, sf = _agregar_caixa_br(texto)
+        si, entradas, saidas, sf = _agregar_caixa_br(texto)
     else:
-        si, e, s, sf = _agregar_caixa_us(texto)
+        si, entradas, saidas, sf = _agregar_caixa_us(texto)
 
-    return si, e, s, sf, pi, pf
+    inferido, diverge = _diagnosticar_entradas(si, entradas, saidas, sf)
+    return AgregadoCaixa(
+        saldo_inicial=si,
+        total_entradas=entradas,
+        total_saidas=saidas,
+        saldo_final=sf,
+        periodo_inicio=pi,
+        periodo_fim=pf,
+        total_entradas_inferido=inferido,
+        entradas_divergem_identidade=diverge,
+    )

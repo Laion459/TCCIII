@@ -19,6 +19,10 @@ def _compilar_pesos(pesos: dict[str, int]) -> list[tuple[re.Pattern[str], int, s
     return compilados
 
 
+def soma_pesos_positivos(pesos: dict[str, int]) -> int:
+    return sum(int(peso) for peso in pesos.values() if int(peso) > 0)
+
+
 def pontuar_pagina(
     texto: str,
     pesos: dict[str, int],

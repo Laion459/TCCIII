@@ -24,13 +24,17 @@ def gerar_relatorio_txt(resultado: ResultadoProcessamento) -> str:
         f"Período: {d['extrato']['periodo']['inicio']} a {d['extrato']['periodo']['fim']}",
         f"Saldo inicial: {d['valores']['saldo_inicial']}",
         f"Total entradas: {d['valores']['total_entradas']}",
+        f"Total entradas inferido: {d['valores']['total_entradas_inferido']}",
+        f"Entradas divergem da identidade: {d['valores']['entradas_divergem_identidade']}",
         f"Total saídas: {d['valores']['total_saidas']}",
         f"Saldo final informado: {d['valores']['saldo_final_informado']}",
         f"Saldo final calculado: {d['valores']['saldo_final_calculado']}",
         f"Diferença: {d['valores']['diferenca']}",
         f"Status: {d['validacao']['status_processamento']}",
+        f"Completo: {d['validacao']['completo']}",
         f"Consistente: {d['validacao']['consistente']}",
         f"Revisão humana: {d['validacao']['revisao_humana']}",
+        f"Método de localização: {d['experimento']['metodo_localizacao']}",
         "Alertas:",
     ]
     if d["alertas"]:

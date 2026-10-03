@@ -16,7 +16,7 @@ def test_resolver_workers_limita_por_cpu():
 
     config = {"ocr": {"workers": 99}}
     limite = os.cpu_count() or 4
-    assert _resolver_workers(config) == min(99, max(1, limite))
+    assert _resolver_workers(config) == min(8, max(1, limite))
 
 
 def test_resolver_workers_invalido_retorna_1():
@@ -110,3 +110,42 @@ def test_extrair_texto_ocr_respeita_cancelamento(mock_ocr_pagina, mock_open, tmp
         )
 
     assert mock_ocr_pagina.call_count == 2
+
+
+@patch("extrato_pdf.modulos.extrator_ocr.Image.frombytes", return_value=object())
+@patch("extrato_pdf.modulos.extrator_ocr.pymupdf.Matrix", return_value=object())
+@patch("extrato_pdf.modulos.extrator_ocr.pymupdf.open")
+@patch(
+    "extrato_pdf.modulos.extrator_ocr.pytesseract.image_to_string",
+    side_effect=RuntimeError("falha de reconhecimento"),
+)
+def test_erro_generico_de_ocr_nao_vira_pagina_vazia(
+    _reconhecimento, mock_open, _matriz, _imagem, tmp_path
+):
+    from extrato_pdf.modulos.extrator_ocr import _ocr_pagina
+
+    class Pix:
+        width = 2
+        height = 2
+        samples = b"\x00" * 12
+
+    class Pagina:
+        def get_pixmap(self, matrix, alpha=False):
+            return Pix()
+
+    class Documento:
+        def load_page(self, numero):
+            return Pagina()
+
+        def close(self):
+            return None
+
+    mock_open.return_value = Documento()
+    pdf = tmp_path / "doc.pdf"
+    pdf.write_bytes(b"%PDF-1.4")
+
+    pagina = _ocr_pagina(pdf, 1, "por", 200, None)
+    assert pagina.texto == ""
+    assert pagina.falha_ocr is True
+    assert pagina.origem == OrigemTexto.OCR
+    assert pagina.erro_ocr.startswith("RuntimeError:")

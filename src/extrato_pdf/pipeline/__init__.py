@@ -7,6 +7,7 @@ from typing import Any, Callable, Optional
 
 from extrato_pdf import __version__
 from extrato_pdf.modelos import (
+    METODOS_SEM_PONTUACAO,
     CamposExtraidos,
     CondicaoExperimental,
     ResultadoProcessamento,
@@ -124,15 +125,18 @@ def processar_pdf(
             else "nenhuma_pagina"
         )
     )
-    if not pontuadas:
-        alertas.append("Extrato bancário não identificável (limiar de localização)")
 
     emitir(on_progress, {"etapa": "parser"}, deve_cancelar=deve_cancelar)
     campos = extrair_campos(estrategia.paginas, pontuadas, config)
+    if campos.metodo_localizacao in METODOS_SEM_PONTUACAO:
+        alertas.append(
+            "localizador abaixo do limiar; região obtida por cabeçalho ou fallback"
+        )
     log.append(
         f"parser instituicao={campos.instituicao} "
         f"periodo={campos.periodo_inicio}/{campos.periodo_fim} "
-        f"paginas={campos.paginas_utilizadas}"
+        f"paginas={campos.paginas_utilizadas} "
+        f"metodo={campos.metodo_localizacao}"
     )
 
     emitir(on_progress, {"etapa": "regras"}, deve_cancelar=deve_cancelar)

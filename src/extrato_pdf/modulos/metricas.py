@@ -41,6 +41,37 @@ def comparar_com_referencia(
             abs(Decimal(str(valores[campo_res])) - Decimal(str(referencia[campo_ref])))
         )
 
+    paginas_sistema = set(resultado.get("experimento", {}).get("paginas_extrato") or [])
+    paginas_referencia = set(referencia.get("paginas_extrato") or [])
+    pagina = {}
+    if paginas_referencia:
+        verdadeiros = len(paginas_sistema & paginas_referencia)
+        falsos_positivos = len(paginas_sistema - paginas_referencia)
+        falsos_negativos = len(paginas_referencia - paginas_sistema)
+        precisao = (
+            verdadeiros / (verdadeiros + falsos_positivos)
+            if verdadeiros + falsos_positivos
+            else 0.0
+        )
+        revocacao = (
+            verdadeiros / (verdadeiros + falsos_negativos)
+            if verdadeiros + falsos_negativos
+            else 0.0
+        )
+        f1 = (
+            2 * precisao * revocacao / (precisao + revocacao)
+            if precisao + revocacao
+            else 0.0
+        )
+        pagina = {
+            "paginas_vp": verdadeiros,
+            "paginas_fp": falsos_positivos,
+            "paginas_fn": falsos_negativos,
+            "paginas_precisao": precisao,
+            "paginas_revocacao": revocacao,
+            "paginas_f1": f1,
+        }
+
     return {
         "documento": referencia.get("documento") or resultado.get("documento", {}).get("arquivo"),
         "acerto_instituicao": acerto_instituicao,
@@ -60,6 +91,8 @@ def comparar_com_referencia(
             "status_processamento"
         ),
         "revisao_humana": resultado.get("validacao", {}).get("revisao_humana"),
+        "completo": resultado.get("validacao", {}).get("completo"),
+        **pagina,
     }
 
 

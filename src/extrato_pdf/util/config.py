@@ -6,6 +6,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+from extrato_pdf.modulos.localizador import soma_pesos_positivos
+
 
 class ConfigInvalidaError(ValueError):
     """Configuração ausente ou inválida."""
@@ -71,6 +73,14 @@ def _validar_config(config: dict[str, Any]) -> None:
     workers = ocr.get("workers", 1)
     if not isinstance(workers, int) or workers < 1 or workers > 8:
         raise ConfigInvalidaError("ocr.workers deve ser inteiro entre 1 e 8")
+    limiar = config["limiar_localizacao"]
+    if not isinstance(limiar, int) or limiar < 0:
+        raise ConfigInvalidaError("limiar_localizacao deve ser inteiro >= 0")
+    teto = soma_pesos_positivos(config["pesos_localizacao"])
+    if limiar > teto:
+        raise ConfigInvalidaError(
+            f"limiar_localizacao ({limiar}) excede a soma dos pesos positivos ({teto})"
+        )
     config["tolerancia_monetaria"] = Decimal(str(config["tolerancia_monetaria"]))
 
 
