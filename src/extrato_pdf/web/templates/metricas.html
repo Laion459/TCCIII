@@ -9,6 +9,11 @@
       <p class="page-sub">Comparação A / B / C - corpus completo e métricas vs. referência manual.</p>
     </div>
     <div class="actions">
+      {% if dados and dados.laboratorio %}
+        <a class="btn" href="/metricas/relatorio" download title="Markdown com score 4/6, divergências A×C, inventário e tabelas detalhadas">
+          Gerar relatório completo
+        </a>
+      {% endif %}
       <a class="btn secondary" href="/lote">Novo lote</a>
     </div>
   </header>
@@ -29,6 +34,11 @@
           {{ hip.veredito | replace('_', ' ') | capitalize }}
         </span>
       </div>
+      <p class="muted" style="margin:0 0 0.75rem">
+        O botão <strong>Gerar relatório completo</strong> baixa um Markdown com Score&nbsp;4/6,
+        divergências A×C, inventário, falhas e valores extraídos × referência —
+        além do que os gráficos e a tabela abaixo mostram.
+      </p>
       <div class="hipotese-scores">
         {% for cond in lab.condicoes %}
           {% set score = hip.scores[cond] %}

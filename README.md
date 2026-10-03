@@ -25,6 +25,7 @@ Avaliar a abordagem integrada (condição C) frente à extração nativa isolada
 cd "TCC 3\codigos"
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
+extrato-pdf-web
 pip install -e ".[dev]"
 ```
 

@@ -6,7 +6,7 @@ import json
 
 import uvicorn
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -325,6 +325,24 @@ def metricas(request: Request):
         ativo="metricas",
         dados=dados,
         erro=erro,
+    )
+
+
+@app.get("/metricas/relatorio")
+def metricas_relatorio():
+    """Gera e baixa relatório completo (Markdown) com todos os comparativos."""
+    try:
+        meta = servicos.gerar_relatorio_metricas()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    path = Path(meta["caminho_markdown"])
+    if not path.exists():
+        raise HTTPException(status_code=500, detail="Relatório não foi gerado.")
+    return FileResponse(
+        path,
+        media_type="text/markdown; charset=utf-8",
+        filename=meta["nome_arquivo"],
+        headers={"Content-Disposition": f'attachment; filename="{meta["nome_arquivo"]}"'},
     )
 
 

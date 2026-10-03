@@ -29,6 +29,7 @@ from extrato_pdf.util.progresso import (
 from extrato_pdf.web.experimentos import CONDICOES, agregar_corpus_experimentos, montar_laboratorio
 from extrato_pdf.web.formatacao import preparar_relatorio
 from extrato_pdf.web.jobs import ItemJob, Job, StatusItem, StatusJob, gerenciador
+from extrato_pdf.web.relatorio_metricas import gerar_arquivos_relatorio
 
 
 def raiz_projeto() -> Path:
@@ -528,6 +529,28 @@ def calcular_metricas() -> dict[str, Any]:
         "itens": metricas,
         "arquivo": str(out),
         "laboratorio": laboratorio,
+    }
+
+
+def gerar_relatorio_metricas() -> dict[str, Any]:
+    """Gera relatório Markdown + JSON consolidado (mais completo que o painel)."""
+    config = carregar_config()
+    saida = pasta_resultados() / "metricas"
+    meta = gerar_arquivos_relatorio(
+        pasta_experimentos=pasta_experimentos(),
+        pasta_refs=pasta_referencias(),
+        pasta_saida=saida,
+        tolerancia=tolerancia(config),
+    )
+    return {
+        "caminho_markdown": str(meta["markdown_path"]),
+        "caminho_latest": str(meta["markdown_latest"]),
+        "caminho_json": str(meta["json_path"]),
+        "nome_arquivo": meta["markdown_path"].name,
+        "gerado_em": meta["gerado_em"],
+        "qtd_metricas": meta["qtd_metricas"],
+        "veredito": meta["veredito"],
+        "bytes": meta["markdown_path"].stat().st_size,
     }
 
 
