@@ -121,6 +121,66 @@ def test_extrair_campos_caixa_br_snippet():
     assert campos.divergencia_entradas_identidade is True
 
 
+SNIPPET_CAIXA_US_MESMA_LINHA = """
+Extrato por período
+01/01/2023
+05/01/2023 CRED TED 1000.00 1000.00
+06/01/2023 CREDPIX | 320000  3200.00
+10/01/2023 ENVIO PIX -200.00/ 800.00
+31/01/2023 SALDO DIA 0.00 800.00
+20/02/2028 21:43
+"""
+
+
+def test_parser_caixa_us_valor_e_saldo_na_mesma_linha():
+    agregado = agregar_movimentos_caixa(SNIPPET_CAIXA_US_MESMA_LINHA)
+    assert agregado.saldo_inicial == Decimal("0.00")
+    assert agregado.total_entradas == Decimal("1000.00")
+    assert agregado.total_saidas == Decimal("200.00")
+    assert agregado.saldo_final == Decimal("800.00")
+    assert agregado.periodo_inicio == "2023-01-01"
+    assert agregado.periodo_fim == "2023-01-31"
+    assert agregado.periodo_exige_revisao is False
+
+
+def test_saldo_dia_grudado_nao_entra_como_credito():
+    texto = """
+Extrato por período
+01/01/2023 SALDO DIA 0.00 0.00
+05/01/2023 CRED TED 1000.00 1000.00
+06/01/2023 SALDODIA 1000.00 1000.00
+"""
+    agregado = agregar_movimentos_caixa(texto)
+    assert agregado.saldo_inicial == Decimal("0.00")
+    assert agregado.total_entradas == Decimal("1000.00")
+    assert agregado.total_saidas == Decimal("0.00")
+    assert agregado.saldo_final == Decimal("1000.00")
+
+
+def test_ano_isolado_longe_nao_estica_o_periodo():
+    texto = "01/01/2023\n02/01/2023\n20/02/2023\n20/02/2028"
+    agregado = agregar_movimentos_caixa(texto)
+    assert agregado.periodo_inicio == "2023-01-01"
+    assert agregado.periodo_fim == "2023-02-20"
+    assert agregado.periodo_exige_revisao is False
+
+
+def test_anos_repetidos_em_intervalo_longo_pedem_revisao():
+    texto = "01/01/2023\n02/01/2023\n01/06/2025\n02/06/2025"
+    agregado = agregar_movimentos_caixa(texto)
+    assert agregado.periodo_inicio == "2023-01-01"
+    assert agregado.periodo_fim == "2025-06-02"
+    assert agregado.periodo_exige_revisao is True
+
+
+def test_ano_vizinho_que_aparece_uma_vez_permanece():
+    texto = "01/12/2023\n02/01/2024"
+    agregado = agregar_movimentos_caixa(texto)
+    assert agregado.periodo_inicio == "2023-12-01"
+    assert agregado.periodo_fim == "2024-01-02"
+    assert agregado.periodo_exige_revisao is False
+
+
 def test_identificar_caixa():
     from extrato_pdf.modulos.instituicao import identificar_instituicao
 

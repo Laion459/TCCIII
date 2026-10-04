@@ -17,6 +17,17 @@
   </div>
 
   <div class="panel">
+    <h2>Corpora de resolução</h2>
+    <p>
+      O corpus <strong>PDF nativo</strong> guarda o texto original. As pastas
+      <code>pdf-100-dpi</code>, <code>pdf-200-dpi</code> e <code>pdf-300-dpi</code>
+      são digitalizações sintéticas: a mesma página vira imagem, o nome do arquivo não muda
+      e a referência manual continua valendo. Não são escaneamentos reais.
+    </p>
+    <p>Gere essas versões com <code>python scripts/gerar_pdfs_rasterizados.py</code>. No lote, marque um ou mais corpora e uma ou mais condições: a esteira percorre essa combinação em sequência. Painel, resultados e métricas continuam mostrando um corpus por vez.</p>
+  </div>
+
+  <div class="panel">
     <h2>CLI equivalente</h2>
     <pre class="pre">extrato-pdf "dados\entrada\arquivo.pdf" --condicao A --saida resultados\experimentos\condicao_a
 extrato-pdf-web

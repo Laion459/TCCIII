@@ -68,6 +68,16 @@ def test_fechamento_sem_instituicao_e_periodo_nao_aprova():
     assert r.status_processamento == StatusProcessamento.INCOMPLETO
 
 
+def test_periodo_longo_exige_revisao_mesmo_com_fechamento():
+    c = _campos_jan()
+    c.periodo_exige_revisao = True
+    r = aplicar_regras(c, Decimal("0.01"))
+    assert r.consistente is True
+    assert r.completo is True
+    assert r.status_processamento == StatusProcessamento.REVISAO_NECESSARIA
+    assert any("62 dias" in alerta for alerta in r.alertas)
+
+
 def test_cabecalho_sem_pontuacao_exige_revisao():
     c = _campos_jan()
     c.metodo_localizacao = "cabecalho_sicoob"

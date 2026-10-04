@@ -48,7 +48,7 @@ def _score(itens: list[dict[str, Any]], campos: tuple[str, ...]) -> float:
 
 def _fmt_num(valor: Any) -> str:
     if valor is None:
-        return "—"
+        return "-"
     if isinstance(valor, bool):
         return "sim" if valor else "não"
     if isinstance(valor, float):
@@ -61,7 +61,7 @@ def _fmt_bool(valor: Any) -> str:
         return "✓"
     if valor is False:
         return "✗"
-    return "—"
+    return "-"
 
 
 def enriquecer_comparacao(
@@ -333,13 +333,15 @@ def formatar_relatorio_markdown(consolidado: dict[str, Any]) -> str:
         linhas.append(texto)
 
     h(1, "Relatório completo de métricas experimentais")
-    p(f"**Gerado em:** {consolidado.get('gerado_em', '—')}")
+    p(f"**Gerado em:** {consolidado.get('gerado_em', '-')}")
+    if consolidado.get("corpus_rotulo"):
+        p(f"**Corpus:** {consolidado['corpus_rotulo']}")
     p(f"**Tolerância monetária:** R$ {_fmt_num(consolidado.get('tolerancia'))}")
     p(f"**Referências manuais:** {consolidado.get('qtd_referencias', 0)}")
     p("")
     p(
         "Este relatório consolida o corpus A/B/C, métricas vs. referência manual, "
-        "divergências A×C, inventário documental e tabelas detalhadas — "
+        "divergências A×C, inventário documental e tabelas detalhadas - "
         "incluindo campos e agregados não exibidos no painel web."
     )
     p("")
@@ -354,8 +356,8 @@ def formatar_relatorio_markdown(consolidado: dict[str, Any]) -> str:
         _tabela_markdown(
             ["Condição", "Score parcial (%)", "C ≥ condição?"],
             [
-                ["A", _fmt_num(scores.get("A")), "—"],
-                ["B", _fmt_num(scores.get("B")), "—"],
+                ["A", _fmt_num(scores.get("A")), "-"],
+                ["B", _fmt_num(scores.get("B")), "-"],
                 [
                     "C",
                     _fmt_num(scores.get("C")),
@@ -384,7 +386,7 @@ def formatar_relatorio_markdown(consolidado: dict[str, Any]) -> str:
                 str(st.get("incompleto", 0)),
                 str(st.get("revisao_necessaria", 0)),
                 str(st.get("nao_processavel", 0)),
-                ", ".join(f"{k}:{v}" for k, v in sorted(tipos.items())) or "—",
+                ", ".join(f"{k}:{v}" for k, v in sorted(tipos.items())) or "-",
             ]
         )
     p(
@@ -498,7 +500,7 @@ def formatar_relatorio_markdown(consolidado: dict[str, Any]) -> str:
                 )
                 for c in CONDICOES
             ),
-            default=(0, "—"),
+            default=(0, "-"),
         )
         rows_cmp.append([rotulo, *vals, melhor[1]])
     p(_tabela_markdown(["Métrica", "A", "B", "C", "Melhor"], rows_cmp))
@@ -515,10 +517,10 @@ def formatar_relatorio_markdown(consolidado: dict[str, Any]) -> str:
         p("")
         for d in divs:
             if d.get("motivo") == "faltando":
-                p(f"- `{d.get('documento')}` — resultado ausente em A ou C")
+                p(f"- `{d.get('documento')}` - resultado ausente em A ou C")
                 continue
             p(
-                f"- `{d.get('documento')}` ({d.get('tipo_pdf') or '?'}) — "
+                f"- `{d.get('documento')}` ({d.get('tipo_pdf') or '?'}) - "
                 f"status A=`{d.get('status_a')}` / C=`{d.get('status_c')}`"
             )
             va, vc = d.get("valores_a") or {}, d.get("valores_c") or {}
@@ -536,10 +538,10 @@ def formatar_relatorio_markdown(consolidado: dict[str, Any]) -> str:
                 ["Documento", "A", "B", "C"],
                 [
                     [
-                        hrow.get("documento", "—"),
-                        str(hrow.get("A") or "—"),
-                        str(hrow.get("B") or "—"),
-                        str(hrow.get("C") or "—"),
+                        hrow.get("documento", "-"),
+                        str(hrow.get("A") or "-"),
+                        str(hrow.get("B") or "-"),
+                        str(hrow.get("C") or "-"),
                     ]
                     for hrow in heat
                 ],
@@ -570,13 +572,13 @@ def formatar_relatorio_markdown(consolidado: dict[str, Any]) -> str:
                 ],
                 [
                     [
-                        i.get("arquivo", "—"),
-                        str(i.get("tipo") or "—"),
-                        str(i.get("paginas") or "—"),
-                        str(i.get("instituicao") or "—"),
-                        str(i.get("status_a") or "—"),
-                        str(i.get("status_b") or "—"),
-                        str(i.get("status_c") or "—"),
+                        i.get("arquivo", "-"),
+                        str(i.get("tipo") or "-"),
+                        str(i.get("paginas") or "-"),
+                        str(i.get("instituicao") or "-"),
+                        str(i.get("status_a") or "-"),
+                        str(i.get("status_b") or "-"),
+                        str(i.get("status_c") or "-"),
                         _fmt_num(i.get("diferenca")),
                         _fmt_bool(i.get("acerto_completo_a")),
                         _fmt_bool(i.get("acerto_completo_b")),
@@ -599,7 +601,7 @@ def formatar_relatorio_markdown(consolidado: dict[str, Any]) -> str:
 
     for cond in CONDICOES:
         falhas = falhas_por_cond.get(cond, [])
-        h(3, f"Condição {cond} — {len(falhas)} falha(s)")
+        h(3, f"Condição {cond} - {len(falhas)} falha(s)")
         if not falhas:
             p("Nenhuma.")
             p("")
@@ -622,9 +624,9 @@ def formatar_relatorio_markdown(consolidado: dict[str, Any]) -> str:
                 ],
                 [
                     [
-                        f.get("documento", "—"),
-                        str(f.get("tipo_pdf") or "—"),
-                        str(f.get("status_processamento") or "—"),
+                        f.get("documento", "-"),
+                        str(f.get("tipo_pdf") or "-"),
+                        str(f.get("status_processamento") or "-"),
                         _fmt_bool(f.get("acerto_instituicao")),
                         _fmt_bool(f.get("acerto_periodo")),
                         _fmt_bool(f.get("acerto_saldo_inicial")),
@@ -644,7 +646,7 @@ def formatar_relatorio_markdown(consolidado: dict[str, Any]) -> str:
     # Detalhe completo por condição
     h(2, "9. Tabela detalhada por documento e condição")
     p(
-        "Inclui acertos de campos monetários, erros absolutos e status — "
+        "Inclui acertos de campos monetários, erros absolutos e status - "
         "mais campos do que a tabela do painel."
     )
     p("")
@@ -675,9 +677,9 @@ def formatar_relatorio_markdown(consolidado: dict[str, Any]) -> str:
                 ],
                 [
                     [
-                        i.get("documento", "—"),
-                        str(i.get("tipo_pdf") or "—"),
-                        str(i.get("status_processamento") or "—"),
+                        i.get("documento", "-"),
+                        str(i.get("tipo_pdf") or "-"),
+                        str(i.get("status_processamento") or "-"),
                         _fmt_bool(i.get("acerto_instituicao")),
                         _fmt_bool(i.get("acerto_periodo")),
                         _fmt_bool(i.get("acerto_saldo_inicial")),
@@ -703,7 +705,7 @@ def formatar_relatorio_markdown(consolidado: dict[str, Any]) -> str:
             if not i.get("acerto_campos_essenciais") or i.get("status_processamento") != "consistente"
         ]
         if detalhe_vals:
-            h(4, f"Valores extraídos × referência (falhas/não consistentes) — {cond}")
+            h(4, f"Valores extraídos × referência (falhas/não consistentes) - {cond}")
             for i in detalhe_vals:
                 val = i.get("valores") or {}
                 refv = i.get("ref_valores") or {}
@@ -714,13 +716,13 @@ def formatar_relatorio_markdown(consolidado: dict[str, Any]) -> str:
                         [
                             [
                                 "Instituição",
-                                str(i.get("instituicao_extraida") or "—"),
-                                str(refv.get("instituicao") or "—"),
+                                str(i.get("instituicao_extraida") or "-"),
+                                str(refv.get("instituicao") or "-"),
                                 _fmt_bool(i.get("acerto_instituicao")),
                             ],
                             [
                                 "Período",
-                                str(i.get("periodo_extraido") or "—"),
+                                str(i.get("periodo_extraido") or "-"),
                                 f"{refv.get('periodo_inicio')} → {refv.get('periodo_fim')}",
                                 _fmt_bool(i.get("acerto_periodo")),
                             ],
@@ -751,8 +753,8 @@ def formatar_relatorio_markdown(consolidado: dict[str, Any]) -> str:
                             [
                                 "Saldo calc. / Δ",
                                 f"{_fmt_num(val.get('saldo_final_calculado'))} / {_fmt_num(val.get('diferenca'))}",
-                                "—",
-                                "—",
+                                "-",
+                                "-",
                             ],
                         ],
                     )
@@ -778,9 +780,12 @@ def gerar_arquivos_relatorio(
     pasta_refs: Path,
     pasta_saida: Path,
     tolerancia: Decimal,
+    corpus_rotulo: str | None = None,
 ) -> dict[str, Any]:
     """Gera Markdown + JSON consolidado e retorna metadados dos arquivos."""
     consolidado = montar_consolidado(pasta_experimentos, pasta_refs, tolerancia)
+    if corpus_rotulo:
+        consolidado["corpus_rotulo"] = corpus_rotulo
     markdown = formatar_relatorio_markdown(consolidado)
 
     pasta_saida.mkdir(parents=True, exist_ok=True)

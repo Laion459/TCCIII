@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Iterable
 
 from extrato_pdf.modelos import ClassificacaoPdf, PaginaTexto, TipoPdf
+from extrato_pdf.modulos.cabecalho_composto import tem_texto_util
 
 
 def classificar_pdf(
@@ -24,7 +25,7 @@ def classificar_pdf(
             evidencia="Documento sem páginas",
         )
 
-    com_texto = sum(1 for p in paginas if len(p.texto.strip()) >= min_chars)
+    com_texto = sum(1 for p in paginas if tem_texto_util(p.texto, min_chars))
     proporcao = (com_texto / total) * 100.0
 
     if com_texto == 0:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.metadata
+import time
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -9,6 +10,7 @@ from extrato_pdf import __version__
 from extrato_pdf.modelos import (
     METODOS_SEM_PONTUACAO,
     CamposExtraidos,
+    OrigemTexto,
     CondicaoExperimental,
     ResultadoProcessamento,
     ResultadoValidacao,
@@ -56,6 +58,7 @@ def processar_pdf(
     path = Path(caminho_pdf)
     log: list[str] = []
     alertas: list[str] = []
+    inicio = time.perf_counter()
 
     emitir(on_progress, {"etapa": "validacao"}, deve_cancelar=deve_cancelar)
 
@@ -82,6 +85,8 @@ def processar_pdf(
                 "limiar_localizacao": config.get("limiar_localizacao"),
             },
             log_etapas=log,
+            duracao_s=round(time.perf_counter() - inicio, 2),
+            paginas_ocr=0,
         )
         if diretorio_saida:
             serializar_resultado(resultado, diretorio_saida)
@@ -110,8 +115,14 @@ def processar_pdf(
     )
     alertas.extend(estrategia.alertas)
     ocr_workers = config.get("ocr", {}).get("workers", 1)
+    paginas_ocr = sum(
+        1
+        for pagina in estrategia.paginas
+        if pagina.origem in (OrigemTexto.OCR, OrigemTexto.COMBINADO)
+    )
     log.append(
         f"estrategia_texto condicao={condicao.value} ocr_workers={ocr_workers} "
+        f"paginas_ocr={paginas_ocr} "
         f"origens={[p.origem.value for p in estrategia.paginas[:5]]}..."
     )
 
@@ -163,6 +174,8 @@ def processar_pdf(
             ],
         },
         log_etapas=log,
+        duracao_s=round(time.perf_counter() - inicio, 2),
+        paginas_ocr=paginas_ocr,
     )
     if diretorio_saida:
         emitir(on_progress, {"etapa": "serializacao"}, deve_cancelar=deve_cancelar)

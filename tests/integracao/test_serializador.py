@@ -37,3 +37,6 @@ def test_serializador_gera_tres_arquivos(tmp_path: Path):
     dados = json.loads((dest / "resultado.json").read_text(encoding="utf-8"))
     assert dados["validacao"]["status_processamento"] == "incompleto"
     assert dados["documento"]["id"] == "D01"
+    assert dados["experimento"]["duracao_s"] == 0.0
+    assert dados["experimento"]["paginas_ocr"] == 0
+    assert "Páginas em OCR: 0" in (dest / "relatorio.txt").read_text(encoding="utf-8")

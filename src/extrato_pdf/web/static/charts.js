@@ -146,5 +146,43 @@
     renderHeatmap("chart-heatmap", lab.heatmap, lab.condicoes);
   }
 
-  window.ExtratoCharts = { renderLaboratorio, renderTaxaConsistente, renderHeatmap };
+  function renderMatriz(containerId, matriz) {
+    const node = el(containerId);
+    if (!node) return;
+    if (!matriz || !matriz.length) {
+      node.innerHTML = '<p class="muted">Nenhuma execução nos quatro corpora.</p>';
+      return;
+    }
+    node.innerHTML = matriz
+      .map((linha) => {
+        const barras = ["A", "B", "C"]
+          .map((condicao) => {
+            const celula = (linha.celulas || []).find((item) => item.condicao === condicao) || {};
+            const taxa = celula.taxa_consistente || 0;
+            const total = celula.total || 0;
+            const rotulo = total ? `${taxa}%` : "—";
+            return `<div class="chart-bar-col">
+              <div class="chart-bar-wrap">
+                <div class="chart-bar-fill" style="height:${taxa}%;background:${CORES_COND[condicao]}" title="${rotulo}"></div>
+              </div>
+              <span class="chart-bar-val">${rotulo}</span>
+              <span class="chart-bar-label">${condicao}</span>
+            </div>`;
+          })
+          .join("");
+        const dpi = linha.dpi == null ? "texto embutido" : "digitalização sintética";
+        return `<div class="chart-metric-group">
+          <div class="chart-metric-title">${linha.rotulo} <span class="muted">${dpi}</span></div>
+          <div class="chart-bar-group">${barras}</div>
+        </div>`;
+      })
+      .join("");
+  }
+
+  window.ExtratoCharts = {
+    renderLaboratorio,
+    renderTaxaConsistente,
+    renderHeatmap,
+    renderMatriz,
+  };
 })();

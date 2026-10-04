@@ -6,10 +6,11 @@
   <header class="page-header">
     <div>
       <h1 class="page-title">Lote / Experimentos</h1>
-      <p class="page-sub">Processa vários PDFs com pipeline visual, barra de progresso, ETA e log ao vivo.</p>
+      <p class="page-sub">Marque os corpora e as condições. A esteira roda essa combinação em sequência, cada uma na própria pasta.</p>
     </div>
   </header>
 
+  {% if erro %}<div class="alert err">{{ erro }}</div>{% endif %}
   <div id="alert-erro" class="alert err" hidden></div>
   <div id="alert-ok" class="alert ok" hidden></div>
   <div id="live-status" class="sr-only" aria-live="polite"></div>
@@ -17,25 +18,52 @@
   <div class="panel">
     <form id="form-lote">
       <div class="form-row">
-        <label for="condicao">Condição</label>
-        <select id="condicao" name="condicao">
-          <option value="A" selected>A - nativo (recomendado para começar)</option>
-          <option value="C">C - integrada</option>
-          <option value="B">B - OCR (lento em PDFs grandes)</option>
-        </select>
+        <label>Corpora</label>
+        <div class="check-actions">
+          <button class="btn secondary" type="button" data-marcar="corpora">Marcar todos</button>
+          <button class="btn secondary" type="button" data-limpar="corpora">Limpar</button>
+        </div>
+        <div class="check-list check-list--compact">
+          {% for c in corpora %}
+            <label>
+              <input type="checkbox" name="corpora" value="{{ c.id }}" {% if c.id == 'pdf-nativo' %}checked{% endif %} />
+              {{ c.rotulo }} ({{ c.qtd }} PDF{{ 's' if c.qtd != 1 else '' }})
+            </label>
+          {% endfor %}
+        </div>
+        <p class="muted">A ordem da esteira é nativo, 100 DPI, 200 DPI e 300 DPI. O nome do arquivo não muda, então a referência manual vale para todos.</p>
       </div>
       <div class="form-row">
-        <label>PDFs selecionados</label>
+        <label>Condições</label>
+        <div class="check-actions">
+          <button class="btn secondary" type="button" data-marcar="condicoes">Marcar todas</button>
+          <button class="btn secondary" type="button" data-limpar="condicoes">Limpar</button>
+        </div>
+        <div class="check-list check-list--compact">
+          <label><input type="checkbox" name="condicoes" value="A" checked /> A - texto nativo</label>
+          <label><input type="checkbox" name="condicoes" value="B" /> B - OCR em todas as páginas</label>
+          <label><input type="checkbox" name="condicoes" value="C" /> C - integrada</label>
+        </div>
+        <p class="muted">Dentro de cada corpus a ordem é A, depois B, depois C.</p>
+        <p class="muted" id="aviso-b" hidden>A condição B relê cada página com OCR. Em vários corpora isso pode levar muitas horas.</p>
+      </div>
+      <div class="form-row">
+        <label>PDFs</label>
+        <div class="check-actions">
+          <button class="btn secondary" type="button" data-marcar="pdfs">Marcar todos</button>
+          <button class="btn secondary" type="button" data-limpar="pdfs">Limpar</button>
+        </div>
         <div class="check-list">
           {% for p in pdfs %}
-            <label><input type="checkbox" name="pdfs" value="{{ p.nome }}" checked /> {{ p.nome }} ({{ p.tamanho_mb }} MB)</label>
+            <label><input type="checkbox" name="pdfs" value="{{ p.nome }}" checked /> {{ p.nome }}</label>
           {% else %}
-            <p class="muted">Nenhum PDF em dados/entrada/</p>
+            <p class="muted">Nenhum PDF nas pastas de corpus.</p>
           {% endfor %}
         </div>
       </div>
+      <p id="resumo-esteira" class="muted"></p>
       <div class="actions">
-        <button class="btn" type="submit" id="btn-lote">Iniciar lote</button>
+        <button class="btn" type="submit" id="btn-lote">Iniciar esteira</button>
         <button class="btn secondary danger" type="button" id="btn-cancelar" hidden>Cancelar</button>
       </div>
     </form>
@@ -64,7 +92,7 @@
     <div class="table-wrap">
     <table>
       <thead>
-        <tr><th>Arquivo</th><th>Status</th><th>Instituição / erro</th><th>Tempo</th><th></th></tr>
+        <tr><th>Corpus</th><th>Cond.</th><th>Arquivo</th><th>Status</th><th>Instituição / erro</th><th>Tempo</th><th></th></tr>
       </thead>
       <tbody id="prog-tabela"></tbody>
     </table>
@@ -105,20 +133,44 @@
     };
 
     let jobIdAtual = null;
+    const formLote = document.getElementById("form-lote");
 
-    document.getElementById("form-lote").addEventListener("submit", async (e) => {
+    function atualizarResumo() {
+      const resumo = ExtratoProgress.resumoEsteira(formLote);
+      const alvo = document.getElementById("resumo-esteira");
+      const execucoes = resumo.total === 1 ? "execução" : "execuções";
+      alvo.textContent = resumo.total
+        ? `${resumo.corpora} corpus × ${resumo.condicoes} condição(ões) × ${resumo.nPdf} PDF(s) = ${resumo.total} ${execucoes}`
+        : "Marque ao menos um corpus, uma condição e um PDF.";
+      document.getElementById("aviso-b").hidden = !resumo.temB;
+    }
+
+    formLote.addEventListener("change", atualizarResumo);
+    formLote.querySelectorAll("[data-marcar],[data-limpar]").forEach((botao) => {
+      botao.addEventListener("click", () => {
+        const nome = botao.dataset.marcar || botao.dataset.limpar;
+        ExtratoProgress.marcarGrupo(formLote, nome, Boolean(botao.dataset.marcar));
+        atualizarResumo();
+      });
+    });
+    atualizarResumo();
+
+    formLote.addEventListener("submit", async (e) => {
       e.preventDefault();
       document.getElementById("alert-erro").hidden = true;
       document.getElementById("alert-ok").hidden = true;
       try {
         const fd = new FormData(e.target);
+        const corpora = fd.getAll("corpora");
+        const condicoes = fd.getAll("condicoes");
+        const pdfs = fd.getAll("pdfs");
+        if (!corpora.length || !condicoes.length || !pdfs.length) {
+          throw new Error("Marque ao menos um corpus, uma condição e um PDF.");
+        }
         const resp = await fetch("/api/lote/iniciar", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            condicao: fd.get("condicao"),
-            pdfs: fd.getAll("pdfs"),
-          }),
+          body: JSON.stringify({ corpora, condicoes, pdfs }),
         });
         if (!resp.ok) {
           const err = await resp.json();

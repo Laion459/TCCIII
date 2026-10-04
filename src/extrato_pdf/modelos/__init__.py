@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
 from typing import Any, Optional
@@ -91,6 +91,7 @@ class CamposExtraidos:
     total_entradas_extraido: Optional[Decimal] = None
     total_entradas_inferido: Optional[Decimal] = None
     divergencia_entradas_identidade: bool = False
+    periodo_exige_revisao: bool = False
     metodo_localizacao: Optional[str] = None
     layout: Optional[str] = None
 
@@ -129,6 +130,8 @@ class ResultadoProcessamento:
     versoes: dict[str, str] = field(default_factory=dict)
     parametros: dict[str, Any] = field(default_factory=dict)
     log_etapas: list[str] = field(default_factory=list)
+    duracao_s: float = 0.0
+    paginas_ocr: int = 0
 
     def para_dict(self) -> dict[str, Any]:
         v = self.validacao
@@ -176,6 +179,8 @@ class ResultadoProcessamento:
                 "paginas_extrato": list(c.paginas_utilizadas),
                 "metodo_localizacao": c.metodo_localizacao,
                 "layout": c.layout,
+                "duracao_s": self.duracao_s,
+                "paginas_ocr": self.paginas_ocr,
                 "paginas_pontuadas": [
                     {
                         "numero": pagina.numero,

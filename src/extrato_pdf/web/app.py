@@ -5,12 +5,13 @@ import asyncio
 import json
 
 import uvicorn
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
+from extrato_pdf.corpora import CorpusDesconhecidoError
 from extrato_pdf.util.config import ConfigInvalidaError
 from extrato_pdf.web import servicos
 from extrato_pdf.web.formatacao import (
@@ -83,14 +84,30 @@ def render(request: Request, template: str, **extra):
     return TEMPLATES.TemplateResponse(request, template, _ctx(**extra))
 
 
+def _corpus_pagina(valor: str | None) -> tuple[dict, list[dict], str | None]:
+    try:
+        atual = servicos.descrever_corpus(valor)
+        erro = None
+    except CorpusDesconhecidoError as exc:
+        atual = servicos.descrever_corpus(None)
+        erro = str(exc)
+    return atual, servicos.resumir_corpora(), erro
+
+
 class IniciarLoteBody(BaseModel):
-    condicao: str = "A"
+    condicao: str | None = None
+    condicoes: list[str] | None = None
     pdfs: list[str] | None = None
+    corpus: str | None = None
+    corpora: list[str] | None = None
 
 
 class IniciarUnitarioBody(BaseModel):
     pdf: str
-    condicao: str = "C"
+    condicao: str | None = None
+    condicoes: list[str] | None = None
+    corpus: str | None = None
+    corpora: list[str] | None = None
 
 
 def _job_finalizado(status: str) -> bool:
@@ -116,7 +133,12 @@ async def _stream_job(job_id: str):
 
 
 @app.get("/", response_class=HTMLResponse)
-def painel(request: Request, ok: str | None = None, erro: str | None = None):
+def painel(
+    request: Request,
+    ok: str | None = None,
+    erro: str | None = None,
+    corpus: str | None = None,
+):
     mensagens_ok = {
         "limpo": (
             "Resultados limpos. Experimentos e métricas foram removidos; "
@@ -128,13 +150,18 @@ def painel(request: Request, ok: str | None = None, erro: str | None = None):
             "Há um processamento em andamento. Cancele ou aguarde antes de limpar."
         ),
     }
+    atual, corpora, erro_corpus = _corpus_pagina(corpus)
     return render(
         request,
         "painel.html",
         ativo="painel",
-        resumo=servicos.resumo_dashboard(),
+        resumo=servicos.resumo_dashboard(atual["id"]),
+        matriz=servicos.matriz_experimental(),
+        parametros=servicos.parametros_experimento(),
         ok=mensagens_ok.get(ok, ok),
-        erro=mensagens_erro.get(erro, erro),
+        erro=erro_corpus or mensagens_erro.get(erro, erro),
+        corpus=atual,
+        corpora=corpora,
     )
 
 
@@ -148,12 +175,16 @@ def limpar_resultados_painel():
 
 
 @app.get("/pdfs", response_class=HTMLResponse)
-def pdfs(request: Request):
+def pdfs(request: Request, corpus: str | None = None):
+    atual, corpora, erro_corpus = _corpus_pagina(corpus)
     return render(
         request,
         "pdfs.html",
         ativo="pdfs",
-        pdfs=servicos.listar_pdfs_entrada(),
+        pdfs=servicos.listar_pdfs_entrada(atual["id"]),
+        corpus=atual,
+        corpora=corpora,
+        erro_corpus=erro_corpus,
     )
 
 
@@ -165,50 +196,32 @@ async def upload_pdf(arquivo: UploadFile = File(...)):
 
 
 @app.get("/processar", response_class=HTMLResponse)
-def processar_form(request: Request):
+def processar_form(request: Request, corpus: str | None = None):
+    atual, corpora, erro_corpus = _corpus_pagina(corpus)
     return render(
         request,
         "processar.html",
         ativo="processar",
-        pdfs=servicos.listar_pdfs_entrada(),
+        pdfs=servicos.listar_pdfs_esteira(),
         resultado=None,
-        erro=None,
-    )
-
-
-@app.post("/processar", response_class=HTMLResponse)
-def processar_exec(
-    request: Request,
-    pdf: str = Form(...),
-    condicao: str = Form("C"),
-):
-    erro = None
-    resultado = None
-    try:
-        resultado = servicos.processar_um(pdf, condicao=condicao)
-    except Exception as exc:  # noqa: BLE001
-        erro = str(exc)
-    return render(
-        request,
-        "processar.html",
-        ativo="processar",
-        pdfs=servicos.listar_pdfs_entrada(),
-        resultado=resultado,
-        erro=erro,
-        selecionado=pdf,
-        condicao=condicao,
+        erro=erro_corpus,
+        corpus=atual,
+        corpora=corpora,
     )
 
 
 @app.get("/lote", response_class=HTMLResponse)
-def lote_form(request: Request):
+def lote_form(request: Request, corpus: str | None = None):
+    atual, corpora, erro_corpus = _corpus_pagina(corpus)
     return render(
         request,
         "lote.html",
         ativo="lote",
-        pdfs=servicos.listar_pdfs_entrada(),
+        pdfs=servicos.listar_pdfs_esteira(),
         relatorio=None,
-        erro=None,
+        erro=erro_corpus,
+        corpus=atual,
+        corpora=corpora,
     )
 
 
@@ -216,31 +229,44 @@ def lote_form(request: Request):
 async def lote_exec(request: Request):
     """Fallback síncrono (sem JavaScript)."""
     form = await request.form()
-    condicao = str(form.get("condicao") or "A")
-    nomes = [str(v) for k, v in form.multi_items() if k == "pdfs"]
-    erro = None
+    pares = list(form.multi_items())
+    nomes = [str(v) for k, v in pares if k == "pdfs"]
+    corpora_form = [str(v) for k, v in pares if k == "corpora"]
+    condicoes_form = [str(v) for k, v in pares if k == "condicoes"]
+    atual, corpora, erro_corpus = _corpus_pagina(None)
+    erro = erro_corpus
     relatorio = None
-    try:
-        if not nomes:
-            nomes = None
-        relatorio = servicos.processar_lote(condicao=condicao, nomes=nomes)
-    except Exception as exc:  # noqa: BLE001
-        erro = str(exc)
+    if erro is None:
+        try:
+            relatorio = servicos.processar_lote(
+                nomes=nomes or None,
+                corpora=corpora_form,
+                condicoes=condicoes_form,
+            )
+        except Exception as exc:  # noqa: BLE001
+            erro = str(exc)
     return render(
         request,
         "lote.html",
         ativo="lote",
-        pdfs=servicos.listar_pdfs_entrada(),
+        pdfs=servicos.listar_pdfs_esteira(),
         relatorio=relatorio,
         erro=erro,
-        condicao=condicao,
+        corpus=atual,
+        corpora=corpora,
     )
 
 
 @app.post("/api/lote/iniciar")
 def api_iniciar_lote(body: IniciarLoteBody):
     try:
-        job = servicos.iniciar_lote_async(body.condicao, body.pdfs)
+        job = servicos.iniciar_lote_async(
+            body.condicao,
+            body.pdfs,
+            body.corpus,
+            condicoes=body.condicoes,
+            corpora=body.corpora,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"job_id": job.id, "total": job.total}
@@ -248,7 +274,16 @@ def api_iniciar_lote(body: IniciarLoteBody):
 
 @app.post("/api/processar/iniciar")
 def api_iniciar_unitario(body: IniciarUnitarioBody):
-    job = servicos.iniciar_unitario_async(body.pdf, body.condicao)
+    try:
+        job = servicos.iniciar_unitario_async(
+            body.pdf,
+            body.condicao,
+            body.corpus,
+            condicoes=body.condicoes,
+            corpora=body.corpora,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"job_id": job.id}
 
 
@@ -280,17 +315,29 @@ def api_cancelar_job(job_id: str):
 
 
 @app.get("/resultados", response_class=HTMLResponse)
-def resultados(request: Request, condicao: str | None = None):
+def resultados(request: Request, condicao: str | None = None, corpus: str | None = None):
     cond = (condicao or "").strip().upper() or None
     if cond and cond not in ("A", "B", "C"):
         cond = None
+    if servicos.eh_visao_todos(corpus):
+        atual = servicos.descrever_visao(corpus)
+        corpora = servicos.resumir_corpora()
+        erro_corpus = None
+        corpus_lista = servicos.VISAO_TODOS
+    else:
+        atual, corpora, erro_corpus = _corpus_pagina(corpus)
+        corpus_lista = atual["id"]
     return render(
         request,
         "resultados.html",
         ativo="resultados",
-        itens=servicos.listar_resultados(condicao=cond),
+        itens=servicos.listar_resultados(condicao=cond, corpus=corpus_lista),
         filtro_condicao=cond,
         condicoes=("A", "B", "C"),
+        corpus=atual,
+        corpora=corpora,
+        matriz=servicos.matriz_experimental(),
+        erro=erro_corpus,
     )
 
 
@@ -312,27 +359,42 @@ def resultado_detalhe(request: Request, path: str):
 
 
 @app.get("/metricas", response_class=HTMLResponse)
-def metricas(request: Request):
-    erro = None
+def metricas(request: Request, corpus: str | None = None):
+    if servicos.eh_visao_todos(corpus):
+        atual = servicos.descrever_visao(corpus)
+        corpora = servicos.resumir_corpora()
+        erro_corpus = None
+    else:
+        atual, corpora, erro_corpus = _corpus_pagina(corpus)
+    erro = erro_corpus
     dados = None
+    if erro is None and not servicos.eh_visao_todos(atual["id"]):
+        try:
+            dados = servicos.calcular_metricas(atual["id"])
+        except Exception as exc:  # noqa: BLE001
+            erro = str(exc)
     try:
-        dados = servicos.calcular_metricas()
+        comparacao = servicos.comparacao_entre_corpora()
     except Exception as exc:  # noqa: BLE001
-        erro = str(exc)
+        comparacao = {"linhas": [], "matriz": []}
+        erro = erro or str(exc)
     return render(
         request,
         "metricas.html",
         ativo="metricas",
         dados=dados,
+        comparacao=comparacao,
         erro=erro,
+        corpus=atual,
+        corpora=corpora,
     )
 
 
 @app.get("/metricas/relatorio")
-def metricas_relatorio():
+def metricas_relatorio(corpus: str | None = None):
     """Gera e baixa relatório completo (Markdown) com todos os comparativos."""
     try:
-        meta = servicos.gerar_relatorio_metricas()
+        meta = servicos.gerar_relatorio_metricas(corpus)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     path = Path(meta["caminho_markdown"])

@@ -3,12 +3,18 @@ from __future__ import annotations
 import json
 import shutil
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from extrato_pdf.corpora import (
+    CORPUS_NATIVO_ID,
+    CORPORA,
+    CorpusDesconhecidoError,
+    obter_corpus,
+)
 from extrato_pdf.modelos import CondicaoExperimental
 from extrato_pdf.modulos.metricas import comparar_com_referencia
 from extrato_pdf.pipeline import processar_pdf
@@ -28,8 +34,8 @@ from extrato_pdf.util.progresso import (
     verificar_cancelamento,
 )
 from extrato_pdf.web.experimentos import CONDICOES, agregar_corpus_experimentos, montar_laboratorio
-from extrato_pdf.web.formatacao import preparar_relatorio
-from extrato_pdf.web.jobs import ItemJob, Job, StatusItem, StatusJob, gerenciador
+from extrato_pdf.web.formatacao import formatar_periodo, preparar_relatorio
+from extrato_pdf.web.jobs import ItemJob, StatusItem, StatusJob, gerenciador
 from extrato_pdf.web.relatorio_metricas import gerar_arquivos_relatorio
 
 
@@ -58,6 +64,10 @@ class ResumoPdf:
     nome: str
     tamanho_mb: float
     modificado: str
+    qtd_corpora: int = 1
+
+
+VISAO_TODOS = "todos"
 
 
 @dataclass
@@ -69,10 +79,167 @@ class ResumoResultado:
     condicao: Optional[str]
     consistente: Optional[bool]
     caminho_relativo: str
+    corpus_id: str = ""
+    corpus_rotulo: str = ""
+    dpi: Optional[int] = None
+    tipo_pdf: Optional[str] = None
+    periodo: str = "-"
+    saldo_inicial: Optional[float] = None
+    total_entradas: Optional[float] = None
+    total_saidas: Optional[float] = None
+    saldo_final: Optional[float] = None
+    diferenca: Optional[float] = None
+    duracao_s: Optional[float] = None
+    paginas_ocr: Optional[int] = None
+    paginas_extrato: list[int] = field(default_factory=list)
 
 
-def listar_pdfs_entrada() -> list[ResumoPdf]:
-    pasta = pasta_entrada()
+def nome_pdf_seguro(nome_pdf: str) -> str:
+    nome = Path(nome_pdf).name
+    if nome != nome_pdf or Path(nome).suffix.lower() != ".pdf":
+        raise ValueError(f"Nome de PDF inválido: {nome_pdf}")
+    return nome
+
+
+def descrever_corpus(corpus_id: str | None) -> dict[str, Any]:
+    corpus = obter_corpus(corpus_id)
+    pasta = pasta_entrada() / corpus.pasta
+    qtd = len(list(pasta.glob("*.pdf"))) if pasta.is_dir() else 0
+    gravacao = pasta_gravacao_corpus(corpus.id)
+    leitura = pasta_leitura_corpus(corpus.id)
+    return {
+        "id": corpus.id,
+        "rotulo": corpus.rotulo,
+        "descricao": corpus.descricao,
+        "sintetico": corpus.sintetico,
+        "dpi": corpus.dpi,
+        "qtd": qtd,
+        "pasta": corpus.pasta,
+        "leitura_legada": leitura.resolve() != gravacao.resolve(),
+    }
+
+
+def resumir_corpora() -> list[dict[str, Any]]:
+    return [descrever_corpus(corpus.id) for corpus in CORPORA]
+
+
+def pasta_gravacao_corpus(corpus_id: str | None) -> Path:
+    corpus = obter_corpus(corpus_id)
+    return pasta_experimentos() / corpus.id
+
+
+def _tem_resultado_json(pasta: Path) -> bool:
+    if not pasta.is_dir():
+        return False
+    return next(pasta.rglob("resultado.json"), None) is not None
+
+
+def _legado_nativo_tem_resultado() -> bool:
+    base = pasta_experimentos()
+    return any(_tem_resultado_json(base / f"condicao_{cond.lower()}") for cond in CONDICOES)
+
+
+def pasta_leitura_corpus(corpus_id: str | None) -> Path:
+    """Pasta que contém condicao_a/b/c. O nativo antigo continua legível até a próxima bateria."""
+    corpus = obter_corpus(corpus_id)
+    nova = pasta_gravacao_corpus(corpus.id)
+    if (
+        corpus.id == CORPUS_NATIVO_ID
+        and not _tem_resultado_json(nova)
+        and _legado_nativo_tem_resultado()
+    ):
+        return pasta_experimentos()
+    return nova
+
+
+def _caminhos_resultado(
+    corpus_id: str | None = None,
+    condicao: str | None = None,
+) -> list[Path]:
+    base = pasta_leitura_corpus(corpus_id)
+    condicoes = (condicao,) if condicao else CONDICOES
+    caminhos: list[Path] = []
+    for cond in condicoes:
+        pasta = base / f"condicao_{cond.lower()}"
+        if pasta.is_dir():
+            caminhos.extend(sorted(pasta.rglob("resultado.json")))
+    return caminhos
+
+
+def listar_pdfs_esteira() -> list[ResumoPdf]:
+    """Nomes únicos entre os corpora. O tamanho exibido é o do PDF nativo, quando existe."""
+    por_nome: dict[str, tuple[ResumoPdf, int]] = {}
+    for corpus in CORPORA:
+        for item in listar_pdfs_entrada(corpus.id):
+            atual, qtd = por_nome.get(item.nome, (item, 0))
+            escolhido = item if corpus.id == CORPUS_NATIVO_ID or item.nome not in por_nome else atual
+            por_nome[item.nome] = (escolhido, qtd + 1)
+    lista: list[ResumoPdf] = []
+    for nome in sorted(por_nome):
+        resumo, qtd = por_nome[nome]
+        lista.append(
+            ResumoPdf(
+                nome=resumo.nome,
+                tamanho_mb=resumo.tamanho_mb,
+                modificado=resumo.modificado,
+                qtd_corpora=qtd,
+            )
+        )
+    return lista
+
+
+def normalizar_condicoes(valores: list[str] | None) -> list[str]:
+    if not valores:
+        raise ValueError("Selecione ao menos uma condição (A, B ou C).")
+    pedidos = {str(valor).strip().upper() for valor in valores if str(valor).strip()}
+    invalidos = sorted(pedidos - set(CONDICOES))
+    if invalidos:
+        raise ValueError(f"Condição desconhecida: {', '.join(invalidos)}.")
+    return [condicao for condicao in CONDICOES if condicao in pedidos]
+
+
+def normalizar_corpora(valores: list[str] | None) -> list[str]:
+    if not valores:
+        raise ValueError("Selecione ao menos um corpus.")
+    pedidos = {str(valor).strip() for valor in valores if str(valor).strip()}
+    desconhecidos = sorted(pedidos - {corpus.id for corpus in CORPORA})
+    if desconhecidos:
+        raise CorpusDesconhecidoError(
+            "Corpus desconhecido: "
+            + ", ".join(desconhecidos)
+            + ". Use um destes: "
+            + ", ".join(corpus.id for corpus in CORPORA)
+            + "."
+        )
+    return [corpus.id for corpus in CORPORA if corpus.id in pedidos]
+
+
+def montar_esteira(
+    corpora_ids: list[str] | None,
+    condicoes: list[str] | None,
+    nomes: list[str] | None,
+) -> list[ItemJob]:
+    """Corpus na ordem do catálogo, condição A depois B depois C, PDF na ordem recebida."""
+    ids = normalizar_corpora(corpora_ids)
+    ordem_condicoes = normalizar_condicoes(condicoes)
+    if nomes is not None and not nomes:
+        raise ValueError("Nenhum PDF selecionado")
+    escolhidos = [nome_pdf_seguro(nome) for nome in nomes] if nomes is not None else None
+    itens: list[ItemJob] = []
+    for corpus_id in ids:
+        presentes = [pdf.nome for pdf in listar_pdfs_entrada(corpus_id)]
+        arquivos = presentes if escolhidos is None else [nome for nome in escolhidos if nome in presentes]
+        for condicao in ordem_condicoes:
+            for nome in arquivos:
+                itens.append(ItemJob(arquivo=nome, corpus=corpus_id, condicao=condicao))
+    if not itens:
+        raise ValueError("Nenhum PDF encontrado nos corpora selecionados")
+    return itens
+
+
+def listar_pdfs_entrada(corpus_id: str | None = None) -> list[ResumoPdf]:
+    corpus = obter_corpus(corpus_id)
+    pasta = pasta_entrada() / corpus.pasta
     itens: list[ResumoPdf] = []
     if not pasta.exists():
         return itens
@@ -90,44 +257,101 @@ def listar_pdfs_entrada() -> list[ResumoPdf]:
     return itens
 
 
+def eh_visao_todos(corpus_id: str | None) -> bool:
+    return str(corpus_id or "").strip().lower() == VISAO_TODOS
+
+
+def descrever_visao(corpus_id: str | None) -> dict[str, Any]:
+    """Corpus de leitura, ou a visão que junta nativo e os três DPIs."""
+    if eh_visao_todos(corpus_id):
+        return {
+            "id": VISAO_TODOS,
+            "rotulo": "Todos os corpora",
+            "descricao": (
+                "PDF nativo e rasters de 100, 200 e 300 DPI lado a lado. "
+                "Cada execução continua gravada na própria pasta."
+            ),
+            "sintetico": False,
+            "dpi": None,
+            "qtd": len(CORPORA),
+            "pasta": "",
+            "leitura_legada": False,
+        }
+    return descrever_corpus(corpus_id)
+
+
+def _resumo_resultado(json_path: Path, corpus_id: str | None) -> ResumoResultado | None:
+    try:
+        dados = json.loads(json_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    cond_item = dados.get("experimento", {}).get("condicao")
+    if not cond_item:
+        for parte in json_path.parts:
+            if parte.startswith("condicao_"):
+                cond_item = parte.replace("condicao_", "").upper()
+                break
+    corpus = obter_corpus(corpus_id) if corpus_id else None
+    valores = dados.get("valores", {})
+    extrato = dados.get("extrato", {})
+    periodo = extrato.get("periodo") or {}
+    experimento = dados.get("experimento", {})
+    rel = json_path.parent.relative_to(raiz_projeto())
+    return ResumoResultado(
+        pasta=json_path.parent.name,
+        arquivo=dados.get("documento", {}).get("arquivo", json_path.parent.name),
+        status=dados.get("validacao", {}).get("status_processamento", "?"),
+        instituicao=extrato.get("instituicao"),
+        condicao=cond_item,
+        consistente=dados.get("validacao", {}).get("consistente"),
+        caminho_relativo=str(rel).replace("\\", "/"),
+        corpus_id=corpus.id if corpus else "",
+        corpus_rotulo=corpus.rotulo if corpus else "",
+        dpi=corpus.dpi if corpus else None,
+        tipo_pdf=dados.get("documento", {}).get("tipo_pdf"),
+        periodo=formatar_periodo(periodo.get("inicio"), periodo.get("fim")),
+        saldo_inicial=valores.get("saldo_inicial"),
+        total_entradas=valores.get("total_entradas"),
+        total_saidas=valores.get("total_saidas"),
+        saldo_final=valores.get("saldo_final_informado"),
+        diferenca=valores.get("diferenca"),
+        duracao_s=experimento.get("duracao_s"),
+        paginas_ocr=experimento.get("paginas_ocr"),
+        paginas_extrato=list(experimento.get("paginas_extrato") or []),
+    )
+
+
 def listar_resultados(
     base: Path | None = None,
     condicao: str | None = None,
+    corpus: str | None = None,
 ) -> list[ResumoResultado]:
-    """Lista resultados. Se `condicao` for A/B/C, restringe à pasta da condição."""
-    raiz = base or pasta_resultados()
+    """Lista resultados de um corpus. `corpus='todos'` junta nativo e os três DPIs."""
     cond = (condicao or "").strip().upper() or None
-    if cond in CONDICOES:
-        raiz = pasta_experimentos() / f"condicao_{cond.lower()}"
-    itens: list[ResumoResultado] = []
-    if not raiz.exists():
+    if cond not in CONDICOES:
+        cond = None
+    if base is None and eh_visao_todos(corpus):
+        itens: list[ResumoResultado] = []
+        for item_corpus in CORPORA:
+            itens.extend(listar_resultados(condicao=cond, corpus=item_corpus.id))
         return itens
-    for json_path in sorted(raiz.rglob("resultado.json")):
-        try:
-            dados = json.loads(json_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
+    if base is None:
+        caminhos = _caminhos_resultado(corpus, cond)
+    else:
+        caminhos = []
+        condicoes = (cond,) if cond else CONDICOES
+        for item in condicoes:
+            pasta = base / f"condicao_{item.lower()}"
+            if pasta.is_dir():
+                caminhos.extend(sorted(pasta.rglob("resultado.json")))
+    itens = []
+    for json_path in caminhos:
+        resumo = _resumo_resultado(json_path, None if base is not None else corpus)
+        if resumo is None:
             continue
-        cond_item = dados.get("experimento", {}).get("condicao")
-        if not cond_item:
-            # Inferir pela pasta condicao_x quando o JSON antigo não traz o campo.
-            for parte in json_path.parts:
-                if parte.startswith("condicao_"):
-                    cond_item = parte.replace("condicao_", "").upper()
-                    break
-        if cond in CONDICOES and cond_item and str(cond_item).upper() != cond:
+        if cond in CONDICOES and resumo.condicao and str(resumo.condicao).upper() != cond:
             continue
-        rel = json_path.parent.relative_to(raiz_projeto())
-        itens.append(
-            ResumoResultado(
-                pasta=json_path.parent.name,
-                arquivo=dados.get("documento", {}).get("arquivo", json_path.parent.name),
-                status=dados.get("validacao", {}).get("status_processamento", "?"),
-                instituicao=dados.get("extrato", {}).get("instituicao"),
-                condicao=cond_item,
-                consistente=dados.get("validacao", {}).get("consistente"),
-                caminho_relativo=str(rel).replace("\\", "/"),
-            )
-        )
+        itens.append(resumo)
     return itens
 
 
@@ -148,22 +372,35 @@ def carregar_resultado(caminho_relativo: str) -> dict[str, Any]:
     }
 
 
+def _corpus_id_do_caminho(caminho_relativo: str) -> str:
+    partes = Path(caminho_relativo).parts
+    if "experimentos" not in partes:
+        return CORPUS_NATIVO_ID
+    indice = partes.index("experimentos")
+    if indice + 1 < len(partes):
+        candidato = partes[indice + 1]
+        if any(corpus.id == candidato for corpus in CORPORA):
+            return candidato
+    return CORPUS_NATIVO_ID
+
+
 def buscar_condicoes_alternativas(
     dados: dict[str, Any],
     caminho_atual: str,
 ) -> list[dict[str, Any]]:
-    """Outras condições experimentais para o mesmo PDF."""
+    """Outras condições experimentais para o mesmo PDF, no mesmo corpus."""
     arquivo = dados.get("documento", {}).get("arquivo", "")
     condicao_atual = dados.get("experimento", {}).get("condicao")
     if not arquivo:
         return []
 
     stem = Path(arquivo).stem
+    base = pasta_leitura_corpus(_corpus_id_do_caminho(caminho_atual))
     alternativas: list[dict[str, Any]] = []
     for cond in ("A", "B", "C"):
         if cond == condicao_atual:
             continue
-        pasta = pasta_experimentos() / f"condicao_{cond.lower()}" / stem
+        pasta = base / f"condicao_{cond.lower()}" / stem
         json_path = pasta / "resultado.json"
         if not json_path.exists():
             continue
@@ -227,16 +464,21 @@ def processar_um(
     destino_rel: str | None = None,
     on_progress: ProgressoFn | None = None,
     deve_cancelar: Callable[[], bool] | None = None,
+    corpus: str | None = None,
 ) -> dict[str, Any]:
-    pdf = pasta_entrada() / nome_pdf
+    nome = nome_pdf_seguro(nome_pdf)
+    item_corpus = obter_corpus(corpus)
+    pdf = pasta_entrada() / item_corpus.pasta / nome
     if not pdf.exists():
-        raise FileNotFoundError(f"PDF não encontrado em entrada/: {nome_pdf}")
+        raise FileNotFoundError(
+            f"PDF não encontrado em dados/entrada/{item_corpus.pasta}/: {nome}"
+        )
     config = carregar_config()
     cond = CondicaoExperimental(condicao.upper())
     if destino_rel:
         saida = raiz_projeto() / destino_rel
     else:
-        saida = pasta_experimentos() / f"condicao_{cond.value.lower()}"
+        saida = pasta_gravacao_corpus(item_corpus.id) / f"condicao_{cond.value.lower()}"
     inicio = time.perf_counter()
     resultado = processar_pdf(
         pdf,
@@ -275,29 +517,32 @@ def processar_um(
 def processar_lote(
     condicao: str = "A",
     nomes: list[str] | None = None,
+    corpus: str | None = None,
+    condicoes: list[str] | None = None,
+    corpora: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Processamento síncrono (CLI / fallback)."""
-    pdfs = listar_pdfs_entrada()
-    if nomes:
-        selecionados = [p.nome for p in pdfs if p.nome in nomes]
-    else:
-        selecionados = [p.nome for p in pdfs]
-
-    cond = CondicaoExperimental(condicao.upper())
-    saida = pasta_experimentos() / f"condicao_{cond.value.lower()}"
-    destino_rel = str(saida.relative_to(raiz_projeto()))
+    """Processamento síncrono (fallback sem JavaScript)."""
+    fila = montar_esteira(
+        corpora if corpora is not None else ([corpus] if corpus else [CORPUS_NATIVO_ID]),
+        condicoes if condicoes is not None else ([condicao] if condicao else ["A"]),
+        nomes,
+    )
     inicio_total = time.perf_counter()
     itens = []
     contagem: dict[str, int] = {}
-    for nome in selecionados:
+    for passo in fila:
         try:
-            item = processar_um(nome, condicao=cond.value, destino_rel=destino_rel)
+            item = processar_um(passo.arquivo, condicao=passo.condicao, corpus=passo.corpus)
+            item["corpus"] = passo.corpus
+            item["condicao"] = passo.condicao
             itens.append(item)
             contagem[item["status"]] = contagem.get(item["status"], 0) + 1
         except Exception as exc:  # noqa: BLE001
             itens.append(
                 {
-                    "arquivo": nome,
+                    "arquivo": passo.arquivo,
+                    "corpus": passo.corpus,
+                    "condicao": passo.condicao,
                     "status": "erro",
                     "erro": str(exc),
                     "consistente": False,
@@ -307,12 +552,13 @@ def processar_lote(
             contagem["erro"] = contagem.get("erro", 0) + 1
 
     return {
-        "condicao": cond.value,
+        "condicao": "+".join(dict.fromkeys(passo.condicao for passo in fila)),
         "total": len(itens),
         "contagem": contagem,
         "duracao_total_s": round(time.perf_counter() - inicio_total, 2),
         "itens": itens,
         "gerado_em": datetime.now(timezone.utc).isoformat(),
+        "corpus": ",".join(dict.fromkeys(passo.corpus for passo in fila)),
     }
 
 
@@ -328,13 +574,10 @@ def _finalizar_cancelamento(job, item, inicio: float) -> None:
 
 
 def _executar_job_lote(job) -> None:
-    cond = job.condicao
-    saida = pasta_experimentos() / f"condicao_{cond.lower()}"
-    destino_rel = str(saida.relative_to(raiz_projeto()))
-
     job.status = StatusJob.EXECUTANDO
     job.iniciado_em = time.perf_counter()
-    job.adicionar_log(f"Iniciando lote - condição {cond}")
+    job.adicionar_log(f"Esteira com {job.total} execução(ões)")
+    grupo_atual: tuple[str, str] | None = None
 
     for idx, item in enumerate(job.itens):
         if job.cancelar:
@@ -343,22 +586,31 @@ def _executar_job_lote(job) -> None:
             job.adicionar_log("Lote cancelado")
             return
 
+        grupo = (item.corpus, item.condicao)
+        if grupo != grupo_atual:
+            grupo_atual = grupo
+            rotulo = obter_corpus(item.corpus).rotulo
+            job.adicionar_log(f"- {rotulo} · condição {item.condicao}")
+
         job.indice_atual = idx + 1
         job.arquivo_atual = item.arquivo
         item.status = StatusItem.PROCESSANDO
         item.mensagem = "Extraindo texto e validando..."
-        job.mensagem = f"Processando {item.arquivo} ({idx + 1}/{job.total})"
-        job.adicionar_log(f"→ {item.arquivo}")
+        job.mensagem = (
+            f"{obter_corpus(item.corpus).rotulo} · {item.condicao} · "
+            f"{item.arquivo} ({idx + 1}/{job.total})"
+        )
+        job.adicionar_log(f"→ {item.condicao} {item.arquivo}")
 
         inicio = time.perf_counter()
         try:
             callback = _criar_callback_progresso(job, item)
             resultado = processar_um(
                 item.arquivo,
-                condicao=cond,
-                destino_rel=destino_rel,
+                condicao=item.condicao,
                 on_progress=callback,
                 deve_cancelar=lambda: job.cancelar,
+                corpus=item.corpus,
             )
             job.limpar_sub_progresso()
             item.status = StatusItem.OK
@@ -369,7 +621,9 @@ def _executar_job_lote(job) -> None:
             item.mensagem = resultado["status"]
             chave = resultado["status"]
             job.contagem[chave] = job.contagem.get(chave, 0) + 1
-            job.adicionar_log(f"✓ {item.arquivo} - {resultado['status']} ({item.duracao_s}s)")
+            job.adicionar_log(
+                f"✓ {item.condicao} {item.arquivo} - {resultado['status']} ({item.duracao_s}s)"
+            )
         except ProcessamentoCanceladoError:
             _finalizar_cancelamento(job, item, inicio)
             return
@@ -380,76 +634,50 @@ def _executar_job_lote(job) -> None:
             item.duracao_s = round(time.perf_counter() - inicio, 2)
             item.mensagem = "erro"
             job.contagem["erro"] = job.contagem.get("erro", 0) + 1
-            job.adicionar_log(f"✗ {item.arquivo} - {exc}")
+            job.adicionar_log(f"✗ {item.condicao} {item.arquivo} - {exc}")
 
     job.arquivo_atual = None
     job.status = StatusJob.CONCLUIDO
-    job.mensagem = f"Concluído - {job.concluidos}/{job.total} arquivo(s)"
-    job.adicionar_log("Lote finalizado")
+    job.mensagem = f"Concluído - {job.concluidos}/{job.total} execução(ões)"
+    job.adicionar_log("Esteira finalizada")
 
 
 def _executar_job_unitario(job) -> None:
-    item = job.itens[0]
-    job.status = StatusJob.EXECUTANDO
-    job.iniciado_em = time.perf_counter()
-    job.arquivo_atual = item.arquivo
-    item.status = StatusItem.PROCESSANDO
-    job.mensagem = f"Processando {item.arquivo}"
-    job.adicionar_log(f"→ {item.arquivo}")
-
-    inicio = time.perf_counter()
-    try:
-        callback = _criar_callback_progresso(job, item)
-        resultado = processar_um(
-            item.arquivo,
-            condicao=job.condicao,
-            on_progress=callback,
-            deve_cancelar=lambda: job.cancelar,
-        )
-        job.limpar_sub_progresso()
-        item.status = StatusItem.OK
-        item.resultado_status = resultado["status"]
-        item.instituicao = resultado.get("instituicao")
-        item.duracao_s = resultado.get("duracao_s", round(time.perf_counter() - inicio, 2))
-        item.caminho_relativo = resultado.get("caminho_relativo")
-        item.mensagem = resultado["status"]
-        job.contagem[resultado["status"]] = 1
-        job.status = StatusJob.CONCLUIDO
-        job.mensagem = f"Concluído - {resultado['status']}"
-        job.adicionar_log(f"✓ {resultado['status']} ({item.duracao_s}s)")
-    except ProcessamentoCanceladoError:
-        _finalizar_cancelamento(job, item, inicio)
-    except Exception as exc:  # noqa: BLE001
-        job.limpar_sub_progresso()
-        item.status = StatusItem.FALHA
-        item.erro = str(exc)
-        item.duracao_s = round(time.perf_counter() - inicio, 2)
-        job.status = StatusJob.ERRO
-        job.mensagem = str(exc)
-        job.adicionar_log(f"✗ {exc}")
-    finally:
-        job.arquivo_atual = None
+    _executar_job_lote(job)
 
 
-def iniciar_lote_async(condicao: str, nomes: list[str] | None = None):
-    pdfs = listar_pdfs_entrada()
-    if nomes is None:
-        selecionados = [p.nome for p in pdfs]
-    elif not nomes:
-        raise ValueError("Nenhum PDF selecionado")
-    else:
-        selecionados = [p.nome for p in pdfs if p.nome in nomes]
-    if not selecionados:
-        raise ValueError("Nenhum PDF selecionado")
-
-    job = gerenciador.criar_lote(condicao, selecionados)
+def iniciar_lote_async(
+    condicao: str | None = None,
+    nomes: list[str] | None = None,
+    corpus: str | None = None,
+    condicoes: list[str] | None = None,
+    corpora: list[str] | None = None,
+):
+    itens = montar_esteira(
+        corpora if corpora is not None else ([corpus] if corpus else [CORPUS_NATIVO_ID]),
+        condicoes if condicoes is not None else ([condicao] if condicao else ["A"]),
+        nomes,
+    )
+    job = gerenciador.criar_esteira("lote", itens)
     gerenciador.executar_em_thread(job, _executar_job_lote)
     return job
 
 
-def iniciar_unitario_async(arquivo: str, condicao: str = "C"):
-    job = gerenciador.criar_unitario(arquivo, condicao)
-    gerenciador.executar_em_thread(job, _executar_job_unitario)
+def iniciar_unitario_async(
+    arquivo: str,
+    condicao: str | None = None,
+    corpus: str | None = None,
+    condicoes: list[str] | None = None,
+    corpora: list[str] | None = None,
+):
+    itens = montar_esteira(
+        corpora if corpora is not None else ([corpus] if corpus else [CORPUS_NATIVO_ID]),
+        condicoes if condicoes is not None else ([condicao] if condicao else ["C"]),
+        [arquivo],
+    )
+    tipo = "unitario" if len(itens) == 1 else "lote"
+    job = gerenciador.criar_esteira(tipo, itens)
+    gerenciador.executar_em_thread(job, _executar_job_lote)
     return job
 
 
@@ -490,7 +718,8 @@ def validar_saidas(base_rel: str = "resultados") -> dict[str, Any]:
     return {"ok": ok, "erros": erros, "valido": len(erros) == 0}
 
 
-def calcular_metricas() -> dict[str, Any]:
+def calcular_metricas(corpus: str | None = None) -> dict[str, Any]:
+    item_corpus = obter_corpus(corpus)
     config = carregar_config()
     tol = tolerancia(config)
     refs = []
@@ -500,7 +729,7 @@ def calcular_metricas() -> dict[str, Any]:
         refs.append(json.loads(path.read_text(encoding="utf-8")))
 
     metricas = []
-    for json_path in pasta_resultados().rglob("resultado.json"):
+    for json_path in _caminhos_resultado(item_corpus.id):
         resultado = json.loads(json_path.read_text(encoding="utf-8"))
         arquivo = resultado.get("documento", {}).get("arquivo", "")
         ref = next(
@@ -520,28 +749,31 @@ def calcular_metricas() -> dict[str, Any]:
         m["condicao"] = resultado.get("experimento", {}).get("condicao")
         metricas.append(m)
 
-    saida = pasta_resultados() / "metricas"
+    saida = pasta_resultados() / "metricas" / item_corpus.id
     saida.mkdir(parents=True, exist_ok=True)
     out = saida / "metricas.json"
     out.write_text(json.dumps(metricas, ensure_ascii=False, indent=2), encoding="utf-8")
-    laboratorio = montar_laboratorio(metricas, pasta_experimentos())
+    laboratorio = montar_laboratorio(metricas, pasta_leitura_corpus(item_corpus.id))
     return {
         "total": len(metricas),
         "itens": metricas,
         "arquivo": str(out),
         "laboratorio": laboratorio,
+        "corpus": descrever_corpus(item_corpus.id),
     }
 
 
-def gerar_relatorio_metricas() -> dict[str, Any]:
+def gerar_relatorio_metricas(corpus: str | None = None) -> dict[str, Any]:
     """Gera relatório Markdown + JSON consolidado (mais completo que o painel)."""
+    item_corpus = obter_corpus(corpus)
     config = carregar_config()
-    saida = pasta_resultados() / "metricas"
+    saida = pasta_resultados() / "metricas" / item_corpus.id
     meta = gerar_arquivos_relatorio(
-        pasta_experimentos=pasta_experimentos(),
+        pasta_experimentos=pasta_leitura_corpus(item_corpus.id),
         pasta_refs=pasta_referencias(),
         pasta_saida=saida,
         tolerancia=tolerancia(config),
+        corpus_rotulo=item_corpus.rotulo,
     )
     return {
         "caminho_markdown": str(meta["markdown_path"]),
@@ -555,26 +787,140 @@ def gerar_relatorio_metricas() -> dict[str, Any]:
     }
 
 
-def resumo_dashboard() -> dict[str, Any]:
+def matriz_experimental() -> list[dict[str, Any]]:
+    """Taxa de consistência de cada corpus em A, B e C, sem somar os corpora."""
+    linhas: list[dict[str, Any]] = []
+    for corpus in CORPORA:
+        agregado = agregar_corpus_experimentos(pasta_leitura_corpus(corpus.id))
+        celulas = []
+        for cond in CONDICOES:
+            info = agregado.get(cond, {})
+            celulas.append(
+                {
+                    "condicao": cond,
+                    "total": int(info.get("total", 0)),
+                    "taxa_consistente": float(info.get("taxa_consistente", 0.0)),
+                    "por_status": dict(info.get("por_status") or {}),
+                    "href": f"/resultados?corpus={corpus.id}&condicao={cond}",
+                }
+            )
+        linhas.append(
+            {
+                "id": corpus.id,
+                "rotulo": corpus.rotulo,
+                "dpi": corpus.dpi,
+                "sintetico": corpus.sintetico,
+                "celulas": celulas,
+            }
+        )
+    return linhas
+
+
+def parametros_experimento() -> dict[str, Any]:
+    config = carregar_config()
+    ocr = config.get("ocr", {})
+    classif = config.get("classificacao_pdf", {})
+    return {
+        "tolerancia": float(config.get("tolerancia_monetaria", 0)),
+        "limiar_localizacao": config.get("limiar_localizacao"),
+        "ocr_dpi": ocr.get("dpi"),
+        "ocr_workers": ocr.get("workers"),
+        "ocr_idioma": ocr.get("idioma"),
+        "min_caracteres": classif.get("min_caracteres_pagina_com_texto"),
+        "percentual_nativo": classif.get("percentual_minimo_nativo"),
+    }
+
+
+def _referencias_manuais() -> list[dict[str, Any]]:
+    refs = []
+    for path in pasta_referencias().glob("*.json"):
+        if path.name.startswith("_") or path.name == "exemplo_formato.json":
+            continue
+        refs.append(json.loads(path.read_text(encoding="utf-8")))
+    return refs
+
+
+def _referencia_do_arquivo(
+    refs: list[dict[str, Any]], arquivo: str
+) -> dict[str, Any] | None:
+    return next(
+        (
+            ref
+            for ref in refs
+            if ref.get("documento") == arquivo or arquivo in str(ref.get("documento", ""))
+        ),
+        None,
+    )
+
+
+def comparacao_entre_corpora() -> dict[str, Any]:
+    """Uma linha por execução, com o gabarito, para nativo e cada DPI."""
+    tol = tolerancia(carregar_config())
+    refs = _referencias_manuais()
+    linhas: list[dict[str, Any]] = []
+    for corpus in CORPORA:
+        for json_path in _caminhos_resultado(corpus.id):
+            try:
+                resultado = json.loads(json_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                continue
+            arquivo = resultado.get("documento", {}).get("arquivo", "")
+            ref = _referencia_do_arquivo(refs, arquivo)
+            metrica = comparar_com_referencia(resultado, ref, tol) if ref else {}
+            experimento = resultado.get("experimento", {})
+            valores = resultado.get("valores", {})
+            rel = str(json_path.parent.relative_to(raiz_projeto())).replace("\\", "/")
+            linhas.append(
+                {
+                    "documento": arquivo,
+                    "corpus_id": corpus.id,
+                    "corpus_rotulo": corpus.rotulo,
+                    "dpi": corpus.dpi,
+                    "condicao": experimento.get("condicao"),
+                    "tipo_pdf": resultado.get("documento", {}).get("tipo_pdf"),
+                    "status_processamento": resultado.get("validacao", {}).get(
+                        "status_processamento"
+                    ),
+                    "acerto_instituicao": metrica.get("acerto_instituicao"),
+                    "acerto_periodo": metrica.get("acerto_periodo"),
+                    "acerto_saldo_inicial": metrica.get("acerto_saldo_inicial"),
+                    "erro_entradas": metrica.get("erro_entradas"),
+                    "erro_saidas": metrica.get("erro_saidas"),
+                    "erro_saldo_final_informado": metrica.get(
+                        "erro_saldo_final_informado"
+                    ),
+                    "paginas_f1": metrica.get("paginas_f1"),
+                    "consistente": resultado.get("validacao", {}).get("consistente"),
+                    "duracao_s": experimento.get("duracao_s"),
+                    "paginas_ocr": experimento.get("paginas_ocr"),
+                    "saldo_final_informado": valores.get("saldo_final_informado"),
+                    "caminho_resultado": rel,
+                }
+            )
+    return {"linhas": linhas, "matriz": matriz_experimental()}
+
+
+def resumo_dashboard(corpus_id: str | None = None) -> dict[str, Any]:
     """Resumo do painel com métricas separadas por condição A/B/C (sem misturar)."""
-    pdfs = listar_pdfs_entrada()
-    resultados = listar_resultados()
+    item_corpus = obter_corpus(corpus_id)
+    pdfs = listar_pdfs_entrada(item_corpus.id)
+    resultados = listar_resultados(corpus=item_corpus.id)
     refs = [
         p.name
         for p in pasta_referencias().glob("*.json")
         if not p.name.startswith("_") and p.name != "exemplo_formato.json"
     ]
-    corpus = agregar_corpus_experimentos(pasta_experimentos())
+    agregado = agregar_corpus_experimentos(pasta_leitura_corpus(item_corpus.id))
     por_condicao = []
     for cond in CONDICOES:
-        info = corpus.get(cond, {})
+        info = agregado.get(cond, {})
         por_condicao.append(
             {
                 "condicao": cond,
                 "total": int(info.get("total", 0)),
                 "por_status": dict(info.get("por_status") or {}),
                 "taxa_consistente": float(info.get("taxa_consistente", 0.0)),
-                "href_resultados": f"/resultados?condicao={cond}",
+                "href_resultados": f"/resultados?corpus={item_corpus.id}&condicao={cond}",
             }
         )
     return {
@@ -611,28 +957,13 @@ def limpar_resultados() -> dict[str, Any]:
             item.unlink()
             removidos += 1
 
-    for sub in (
-        raiz / "experimentos" / "condicao_a",
-        raiz / "experimentos" / "condicao_b",
-        raiz / "experimentos" / "condicao_c",
-        raiz / "metricas",
-    ):
-        sub.mkdir(parents=True, exist_ok=True)
+    for corpus in CORPORA:
+        (raiz / "experimentos" / corpus.id).mkdir(parents=True, exist_ok=True)
+    (raiz / "metricas").mkdir(parents=True, exist_ok=True)
 
     return {
         "itens_removidos": removidos,
         "qtd_resultados": len(listar_resultados()),
-    }
-
-
-def obter_config_legivel() -> dict[str, Any]:
-    config = carregar_config()
-    # Decimal não serializa direto
-    config["tolerancia_monetaria"] = float(config["tolerancia_monetaria"])
-    return {
-        "default_path": str(caminho_config_padrao()),
-        "instituicoes_path": str(caminho_instituicoes_padrao()),
-        "config": config,
     }
 
 
@@ -694,8 +1025,8 @@ def salvar_config_ui(dados: dict[str, Any]) -> None:
 
 
 def salvar_upload_pdf(nome: str, conteudo: bytes) -> str:
-    destino = pasta_entrada() / Path(nome).name
-    if destino.suffix.lower() != ".pdf":
-        raise ValueError("Apenas arquivos PDF são aceitos")
+    nome_seguro = nome_pdf_seguro(Path(nome).name)
+    destino = pasta_entrada() / obter_corpus(CORPUS_NATIVO_ID).pasta / nome_seguro
+    destino.parent.mkdir(parents=True, exist_ok=True)
     destino.write_bytes(conteudo)
     return destino.name

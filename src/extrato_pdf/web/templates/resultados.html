@@ -1,47 +1,109 @@
 {% extends "base.html" %}
+{% from "_macros.html" import seletor_corpus, badge_status %}
 {% block title %}Resultados{% endblock %}
 {% block content %}
-  <h1 class="page-title">Resultados</h1>
-  <p class="page-sub">
-    {% if filtro_condicao %}
-      Filtrado pela condição <strong>{{ filtro_condicao }}</strong>
-      (<code>resultados/experimentos/condicao_{{ filtro_condicao | lower }}/</code>).
-    {% else %}
-      Todos os <code>resultado.json</code> sob <code>resultados/</code>. Use o filtro para comparar A, B e C sem misturar.
-    {% endif %}
-  </p>
+  <header class="page-header">
+    <div>
+      <h1 class="page-title">Resultados</h1>
+      <p class="page-sub">
+        <strong>{{ corpus.rotulo }}</strong>
+        {% if filtro_condicao %}
+          · condição <strong>{{ filtro_condicao }}</strong>
+        {% else %}
+          · condições A, B e C
+        {% endif %}
+        · {{ itens | length }} execução(ões)
+      </p>
+    </div>
+  </header>
+
+  {% if erro %}<div class="alert err">{{ erro }}</div>{% endif %}
+
+  <div class="panel">
+    {{ seletor_corpus(corpora, corpus, true) }}
+  </div>
+
+  <div class="panel">
+    <h2>Consistência por corpus e condição</h2>
+    <p class="muted">A barra é a taxa de status consistente. Nativo usa o texto do PDF. 100, 200 e 300 DPI são digitalizações sintéticas. O OCR do Tesseract permanece no DPI configurado.</p>
+    <div class="table-wrap">
+      <table class="matriz-table">
+        <thead>
+          <tr><th>Corpus</th><th>Origem</th><th>A</th><th>B</th><th>C</th></tr>
+        </thead>
+        <tbody>
+          {% for linha in matriz %}
+          <tr>
+            <td><a href="/resultados?corpus={{ linha.id }}">{{ linha.rotulo }}</a></td>
+            <td class="muted">{% if linha.dpi %}{{ linha.dpi }} DPI{% else %}nativo{% endif %}</td>
+            {% for celula in linha.celulas %}
+            <td class="matriz-cell matriz-cell--{{ celula.condicao | lower }}">
+              <a href="{{ celula.href }}">{% if celula.total %}{{ celula.taxa_consistente }}% · {{ celula.total }}{% else %}—{% endif %}</a>
+              <div class="matriz-bar"><span style="width: {{ celula.taxa_consistente }}%"></span></div>
+            </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
 
   <nav class="filter-tabs" aria-label="Filtrar por condição">
-    <a class="filter-tab{% if not filtro_condicao %} is-active{% endif %}" href="/resultados">Todas</a>
+    <a class="filter-tab{% if not filtro_condicao %} is-active{% endif %}" href="/resultados?corpus={{ corpus.id }}">Todas</a>
     {% for c in condicoes %}
-      <a class="filter-tab filter-tab--{{ c | lower }}{% if filtro_condicao == c %} is-active{% endif %}" href="/resultados?condicao={{ c }}">
+      <a class="filter-tab filter-tab--{{ c | lower }}{% if filtro_condicao == c %} is-active{% endif %}" href="/resultados?corpus={{ corpus.id }}&condicao={{ c }}">
         Condição {{ c }}
       </a>
     {% endfor %}
   </nav>
 
   <div class="panel">
+    <h2>Execuções</h2>
     <div class="table-wrap">
     <table>
       <thead>
-        <tr><th>Arquivo</th><th>Pasta</th><th>Cond.</th><th>Status</th><th>Instituição</th><th></th></tr>
+        <tr>
+          <th>Arquivo</th>
+          <th>Corpus</th>
+          <th>DPI</th>
+          <th>Cond.</th>
+          <th>Tipo</th>
+          <th>Status</th>
+          <th>Instituição</th>
+          <th>Período</th>
+          <th class="num">Entradas</th>
+          <th class="num">Saídas</th>
+          <th class="num">Saldo final</th>
+          <th class="num">Dif.</th>
+          <th class="num">Págs.</th>
+          <th class="num">OCR</th>
+          <th class="num">Tempo</th>
+          <th></th>
+        </tr>
       </thead>
       <tbody>
         {% for r in itens %}
         <tr>
           <td>{{ r.arquivo }}</td>
-          <td class="muted">{{ r.caminho_relativo }}</td>
+          <td>{{ r.corpus_rotulo or '-' }}</td>
+          <td>{% if r.dpi %}{{ r.dpi }}{% else %}nativo{% endif %}</td>
           <td><span class="badge info">{{ r.condicao or '-' }}</span></td>
-          <td>
-            <span class="badge {% if r.status == 'consistente' %}ok{% elif r.status in ['incompleto','revisao_necessaria'] %}warn{% else %}err{% endif %}">
-              {{ r.status }}
-            </span>
-          </td>
+          <td>{{ r.tipo_pdf or '-' }}</td>
+          <td>{{ badge_status(r.status) }}</td>
           <td>{{ r.instituicao or '-' }}</td>
+          <td>{{ r.periodo }}</td>
+          <td class="num">{{ r.total_entradas | brl }}</td>
+          <td class="num">{{ r.total_saidas | brl }}</td>
+          <td class="num">{{ r.saldo_final | brl }}</td>
+          <td class="num">{{ r.diferenca | brl }}</td>
+          <td class="num">{{ r.paginas_extrato | join(', ') if r.paginas_extrato else '-' }}</td>
+          <td class="num">{{ r.paginas_ocr if r.paginas_ocr is not none else '-' }}</td>
+          <td class="num">{% if r.duracao_s is not none %}{{ r.duracao_s }}s{% else %}-{% endif %}</td>
           <td><a href="/resultados/ver?path={{ r.caminho_relativo }}">detalhe</a></td>
         </tr>
         {% else %}
-        <tr><td colspan="6" class="muted">Nenhum resultado{% if filtro_condicao %} na condição {{ filtro_condicao }}{% endif %}.</td></tr>
+        <tr><td colspan="16" class="muted">Nenhum resultado{% if filtro_condicao %} na condição {{ filtro_condicao }}{% endif %}.</td></tr>
         {% endfor %}
       </tbody>
     </table>

@@ -11,6 +11,7 @@ from extrato_pdf.modelos import (
     PaginaTexto,
     TipoPdf,
 )
+from extrato_pdf.modulos.cabecalho_composto import tem_texto_util
 from extrato_pdf.modulos.extrator_ocr import extrair_texto_ocr
 from extrato_pdf.util.progresso import CancelarFn, ProgressoFn
 
@@ -69,7 +70,7 @@ def _ocr_nas_paginas_fracas(
     faltantes = [
         pagina.numero
         for pagina in paginas_nativas
-        if len(pagina.texto.strip()) < min_chars
+        if not tem_texto_util(pagina.texto, min_chars)
     ]
     mapa: dict[int, PaginaTexto] = {
         pagina.numero: PaginaTexto(pagina.numero, pagina.texto, OrigemTexto.NATIVO)

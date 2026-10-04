@@ -18,6 +18,7 @@ from extrato_pdf.modulos.normalizador import (
     ErroNormalizacaoMonetaria,
     normalizar_monetario_br,
 )
+from extrato_pdf.modulos.cabecalho_composto import sem_cabecalho_composto
 from extrato_pdf.modulos.parser_caixa import agregar_movimentos_caixa, texto_parece_caixa
 
 
@@ -30,6 +31,10 @@ _PERIODO_ALT_RE = re.compile(
     re.IGNORECASE,
 )
 _VALOR_SIG_RE = re.compile(r"^([\d.]+,\d{2})\*?([CD])?$", re.IGNORECASE)
+_VALOR_NO_FIM_RE = re.compile(r"([\d.]+,\d{2})\s*\*?([CD])\s*$", re.IGNORECASE)
+_TOL_SALDO = Decimal("0.01")
+_LOOKAHEAD_SIGLA = 6
+_BLOQUEIA_LOOKAHEAD = ("SALDO DO DIA", "SALDO ANTERIOR", "SALDO BLOQ", "RESUMO")
 _RE_NUM_US_LINHA = re.compile(r"^-?\d+\.\d{2}$", re.M)
 
 
@@ -45,9 +50,7 @@ def _eh_cabecalho_extrato_cc(texto: str) -> bool:
         return False
     if "EXTRATO CONSOLIDADO" in up or "CONTA FINANCEIRA" in up:
         return False
-    if "EXTRATO CONTA CORRENTE" in up:
-        return True
-    return "SICOOB" in up and "EXTRATO" in up and "CONTA CORRENTE" in up
+    return "EXTRATO CONTA CORRENTE" in up
 
 
 def _eh_cabecalho_caixa(texto: str) -> bool:
@@ -137,6 +140,8 @@ def _selecionar_texto_sicoob(
             break
         nums.append(numero)
         blocos.append(texto)
+        if "RESUMO" in up and re.search(r"SALDO EM C\.?\s*CORRENTE", up):
+            break
         if "OUVIDORIA SICOOB" in up and "SALDO EM C" in up:
             break
     texto = _cortar_conta_capital("\n".join(blocos))
@@ -252,34 +257,178 @@ def _parse_valor_sig(
         return None, indice
     sig = m.group(2).upper() if m.group(2) else None
     prox = indice + 1
-    if sig is None and prox < len(linhas) and linhas[prox].strip() in {"C", "D"}:
-        sig = linhas[prox].strip()
+    if sig is None and prox < len(linhas) and linhas[prox].strip().upper() in {"C", "D"}:
+        sig = linhas[prox].strip().upper()
         prox += 1
     return (valor, sig), prox
 
 
-def _agregar_movimentos_sicoob(texto: str) -> tuple[
+def _valor_no_fim(linha: str) -> Optional[tuple[Decimal, str]]:
+    """Valor e C/D no fim da linha do histórico, como o OCR de 100 DPI devolve."""
+    achado = _VALOR_NO_FIM_RE.search(linha.strip())
+    if not achado:
+        return None
+    try:
+        valor = normalizar_monetario_br(achado.group(1))
+    except ErroNormalizacaoMonetaria:
+        return None
+    return valor, achado.group(2).upper()
+
+
+def _indice_coluna_valor(linhas: list[str]) -> Optional[int]:
+    """OCR em coluna deixa os valores depois de uma linha só com VALOR."""
+    for indice, linha in enumerate(linhas):
+        if linha.strip().upper() != "VALOR":
+            continue
+        proximo = indice + 1
+        while proximo < len(linhas) and not linhas[proximo].strip():
+            proximo += 1
+        if proximo < len(linhas) and _VALOR_SIG_RE.fullmatch(linhas[proximo].strip()):
+            return proximo
+    return None
+
+
+def _ler_coluna_valor(linhas: list[str], inicio: int) -> list[tuple[Decimal, Optional[str]]]:
+    valores: list[tuple[Decimal, Optional[str]]] = []
+    indice = inicio
+    while indice < len(linhas):
+        if not linhas[indice].strip():
+            indice += 1
+            continue
+        parsed, proximo = _parse_valor_sig(linhas, indice)
+        if parsed is None:
+            break
+        valores.append(parsed)
+        indice = proximo
+    return valores
+
+
+def _agregar_coluna_valor(
+    valores: list[tuple[Decimal, Optional[str]]],
+) -> tuple[Optional[Decimal], Optional[Decimal], Optional[Decimal], Optional[Decimal]]:
+    """Separa lançamento de saldo do dia pela posição do saldo corrente."""
+    saldo_inicial: Optional[Decimal] = None
+    corrente: Optional[Decimal] = None
+    saldo_final: Optional[Decimal] = None
+    entradas = Decimal("0.00")
+    saidas = Decimal("0.00")
+    creditos = 0
+    debitos = 0
+    for valor, sigla in valores:
+        if sigla not in {"C", "D"}:
+            continue
+        if saldo_inicial is None and sigla == "C":
+            saldo_inicial = valor
+            corrente = valor
+            continue
+        if sigla == "C" and valor == 0:
+            continue
+        if (
+            sigla == "C"
+            and corrente is not None
+            and abs(corrente - valor) <= _TOL_SALDO
+        ):
+            saldo_final = valor
+            continue
+        if sigla == "C":
+            entradas += valor
+            creditos += 1
+            corrente = (corrente or Decimal("0.00")) + valor
+            continue
+        saidas += valor
+        debitos += 1
+        corrente = (corrente or Decimal("0.00")) - valor
+    return (
+        saldo_inicial,
+        entradas.quantize(Decimal("0.01")) if creditos else None,
+        saidas.quantize(Decimal("0.01")) if debitos else None,
+        saldo_final,
+    )
+
+
+def _sigla_a_frente(
+    linhas: list[str], inicio: int
+) -> tuple[Optional[str], int]:
+    """C ou D algumas linhas à frente, quando o timbre da folha separou o valor."""
+    limite = min(len(linhas), inicio + _LOOKAHEAD_SIGLA)
+    indice = inicio
+    while indice < limite:
+        linha = linhas[indice].strip().upper()
+        if linha in {"C", "D"}:
+            return linha, indice + 1
+        if any(marca in linha for marca in _BLOQUEIA_LOOKAHEAD):
+            return None, inicio
+        if _parse_valor_sig(linhas, indice)[0] is not None:
+            return None, inicio
+        indice += 1
+    return None, inicio
+
+
+def _equacao_fecha(
+    saldo_inicial: Optional[Decimal],
+    entradas: Optional[Decimal],
+    saidas: Optional[Decimal],
+    saldo_final: Optional[Decimal],
+) -> bool:
+    if None in (saldo_inicial, entradas, saidas, saldo_final):
+        return False
+    return abs((saldo_inicial + entradas - saidas) - saldo_final) <= _TOL_SALDO
+
+
+def _agregar_movimentos_sicoob(
+    texto: str, *, _lookahead: Optional[bool] = None
+) -> tuple[
     Optional[Decimal],
     Optional[Decimal],
     Optional[Decimal],
     Optional[Decimal],
 ]:
     """Extrai saldo inicial/final e soma C/D ignorando saldos diários (piloto SICOOB)."""
+    if _lookahead is None:
+        estrito = _agregar_movimentos_sicoob(texto, _lookahead=False)
+        if _equacao_fecha(*estrito):
+            return estrito
+        folgado = _agregar_movimentos_sicoob(texto, _lookahead=True)
+        if _equacao_fecha(*folgado):
+            return folgado
+        return estrito
+
+    texto = sem_cabecalho_composto(texto)
     texto = _cortar_conta_capital(texto)
     resumo = re.search(r"\nRESUMO\n", texto, re.IGNORECASE)
     texto_mov = texto[: resumo.start()] if resumo else texto
     texto_resumo = texto[resumo.start() :] if resumo else ""
+
+    linhas_completas = [ln.strip() for ln in texto.splitlines() if ln.strip()]
+    inicio_coluna = _indice_coluna_valor(linhas_completas)
+    if inicio_coluna is not None:
+        saldo_inicial, entradas, saidas, saldo_coluna = _agregar_coluna_valor(
+            _ler_coluna_valor(linhas_completas, inicio_coluna)
+        )
+        return (
+            saldo_inicial,
+            entradas,
+            saidas,
+            saldo_coluna if saldo_coluna is not None else _saldo_final_sicoob(texto_resumo, texto_mov),
+        )
 
     linhas = [ln.strip() for ln in texto_mov.splitlines() if ln.strip()]
     skip_hdr = ("SALDO ANTERIOR", "SALDO DO DIA", "SALDO BLOQ")
     saldo_inicial: Optional[Decimal] = None
     entradas = Decimal("0.00")
     saidas = Decimal("0.00")
+    creditos = 0
+    debitos = 0
     i = 0
     while i < len(linhas):
         up = linhas[i].upper()
         if any(k in up for k in skip_hdr):
             if "SALDO ANTERIOR" in up and "BLOQ" not in up:
+                na_linha = _valor_no_fim(linhas[i])
+                if na_linha is not None and saldo_inicial is None:
+                    saldo_inicial = na_linha[0]
+                    i += 1
+                    continue
                 j = i + 1
                 while j < len(linhas):
                     parsed, j2 = _parse_valor_sig(linhas, j)
@@ -288,7 +437,7 @@ def _agregar_movimentos_sicoob(texto: str) -> tuple[
                             saldo_inicial = parsed[0]
                         i = j2
                         break
-                    if linhas[j] in {"C", "D"}:
+                    if linhas[j].strip().upper() in {"C", "D"}:
                         j += 1
                         continue
                     i = j
@@ -304,18 +453,41 @@ def _agregar_movimentos_sicoob(texto: str) -> tuple[
         parsed, j2 = _parse_valor_sig(linhas, i)
         if parsed and parsed[1] in {"C", "D"}:
             valor, sig = parsed
-            if sig == "C":
-                entradas += valor
-            else:
-                saidas += valor
-            i = j2
-            continue
-        i += 1
+        elif parsed is not None and _lookahead:
+            sigla, j3 = _sigla_a_frente(linhas, j2)
+            if sigla is None:
+                i += 1
+                continue
+            valor, sig = parsed[0], sigla
+            j2 = j3
+        else:
+            no_fim = _valor_no_fim(linhas[i])
+            if no_fim is None:
+                i += 1
+                continue
+            valor, sig = no_fim
+            j2 = i + 1
+        if sig == "C":
+            entradas += valor
+            creditos += 1
+        else:
+            saidas += valor
+            debitos += 1
+        i = j2
 
+    return (
+        saldo_inicial,
+        entradas.quantize(Decimal("0.01")) if creditos else None,
+        saidas.quantize(Decimal("0.01")) if debitos else None,
+        _saldo_final_sicoob(texto_resumo, texto_mov),
+    )
+
+
+def _saldo_final_sicoob(texto_resumo: str, texto_mov: str) -> Optional[Decimal]:
     saldo_final: Optional[Decimal] = None
     m_final = re.search(
         r"SALDO EM C\.?\s*CORRENTE\s*\(?\+?\)?\s*:?\s*([\d.]+,\d{2})\s*C?",
-        texto_resumo or texto,
+        texto_resumo or texto_mov,
         flags=re.IGNORECASE,
     )
     if m_final:
@@ -323,26 +495,21 @@ def _agregar_movimentos_sicoob(texto: str) -> tuple[
             saldo_final = normalizar_monetario_br(m_final.group(1))
         except ErroNormalizacaoMonetaria:
             saldo_final = None
-    if saldo_final is None:
-        matches = list(
-            re.finditer(
-                r"SALDO DO DIA\s*([\d.]+,\d{2})\s*C?",
-                texto_mov,
-                flags=re.IGNORECASE,
-            )
+    if saldo_final is not None:
+        return saldo_final
+    matches = list(
+        re.finditer(
+            r"SALDO DO DIA\s*([\d.]+,\d{2})\s*C?",
+            texto_mov,
+            flags=re.IGNORECASE,
         )
-        if matches:
-            try:
-                saldo_final = normalizar_monetario_br(matches[-1].group(1))
-            except ErroNormalizacaoMonetaria:
-                saldo_final = None
-
-    return (
-        saldo_inicial,
-        entradas.quantize(Decimal("0.01")),
-        saidas.quantize(Decimal("0.01")),
-        saldo_final,
     )
+    if not matches:
+        return None
+    try:
+        return normalizar_monetario_br(matches[-1].group(1))
+    except ErroNormalizacaoMonetaria:
+        return None
 
 
 def _extrair_periodo(texto: str) -> tuple[Optional[str], Optional[str]]:
@@ -392,6 +559,7 @@ def extrair_campos(
     periodo_inicio = periodo_fim = None
     entradas_inferido = None
     entradas_divergem = False
+    periodo_exige_revisao = False
 
     if layout == "caixa_periodo" or (
         layout == "generico" and texto_parece_caixa(texto)
@@ -405,6 +573,7 @@ def extrair_campos(
         periodo_fim = agregado.periodo_fim
         entradas_inferido = agregado.total_entradas_inferido
         entradas_divergem = agregado.entradas_divergem_identidade
+        periodo_exige_revisao = agregado.periodo_exige_revisao
         if inst.nome is None and not inst.ambigua:
             inst_nome = "CAIXA"
         else:
@@ -436,6 +605,7 @@ def extrair_campos(
         total_entradas_extraido=total_entradas if total_entradas is not None else None,
         total_entradas_inferido=entradas_inferido,
         divergencia_entradas_identidade=entradas_divergem,
+        periodo_exige_revisao=periodo_exige_revisao,
         metodo_localizacao=metodo,
         layout=layout,
     )

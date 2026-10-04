@@ -156,6 +156,8 @@
               ? '<span class="spinner" aria-hidden="true"></span>'
               : "";
           return `<tr class="row-${item.status}">
+            <td>${item.corpus_rotulo || item.corpus || "-"}</td>
+            <td>${item.condicao || "-"}</td>
             <td>${icon} ${item.arquivo}</td>
             <td><span class="badge ${badgeClass(st)}">${st}</span></td>
             <td>${item.instituicao || item.erro || item.mensagem || "-"}</td>
@@ -237,12 +239,17 @@
 
   async function iniciarLote(form, opts) {
     const fd = new FormData(form);
-    const condicao = fd.get("condicao") || "A";
+    const condicoes = fd.getAll("condicoes");
+    const corpora = fd.getAll("corpora");
     const pdfs = fd.getAll("pdfs");
     const resp = await fetch("/api/lote/iniciar", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ condicao, pdfs }),
+      body: JSON.stringify({
+        condicoes: condicoes.length ? condicoes : [fd.get("condicao") || "A"],
+        corpora: corpora.length ? corpora : [fd.get("corpus") || "pdf-nativo"],
+        pdfs,
+      }),
     });
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
@@ -252,13 +259,40 @@
     return acompanharJob(job_id, opts);
   }
 
-  async function iniciarUnitario(pdf, condicao, opts) {
+  function resumoEsteira(form) {
+    const fd = new FormData(form);
+    const corpora = fd.getAll("corpora").length;
+    const condicoes = fd.getAll("condicoes");
+    const marcados = fd.getAll("pdfs");
+    const nPdf = marcados.length || (fd.get("pdf") ? 1 : 0);
+    const total = corpora * condicoes.length * nPdf;
+    return {
+      corpora,
+      condicoes: condicoes.length,
+      nPdf,
+      total,
+      temB: condicoes.includes("B"),
+    };
+  }
+
+  function marcarGrupo(form, nome, marcado) {
+    form.querySelectorAll(`input[name="${nome}"]`).forEach((input) => {
+      input.checked = marcado;
+    });
+  }
+
+  async function iniciarUnitario(pdf, condicoes, corpora, opts) {
+    const listaCondicoes = Array.isArray(condicoes) ? condicoes : [condicoes || "C"];
+    const listaCorpora = Array.isArray(corpora) ? corpora : [corpora || "pdf-nativo"];
     const resp = await fetch("/api/processar/iniciar", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pdf, condicao }),
+      body: JSON.stringify({ pdf, condicoes: listaCondicoes, corpora: listaCorpora }),
     });
-    if (!resp.ok) throw new Error("Falha ao iniciar processamento");
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || "Falha ao iniciar processamento");
+    }
     const { job_id } = await resp.json();
     return acompanharJob(job_id, opts);
   }
@@ -268,6 +302,8 @@
     iniciarUnitario,
     acompanharJob,
     renderProgresso,
+    resumoEsteira,
+    marcarGrupo,
     fmtSegundos,
     ETAPAS,
   };

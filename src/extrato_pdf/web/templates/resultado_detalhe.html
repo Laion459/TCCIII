@@ -122,6 +122,8 @@
           <tr><th>Tipo conta</th><td>{{ d.extrato.tipo_conta or '-' }}</td></tr>
           <tr><th>Limiar localização</th><td>{{ d.experimento.parametros.limiar_localizacao }}</td></tr>
           <tr><th>OCR DPI / workers</th><td>{{ d.experimento.parametros.ocr_dpi }} / {{ d.experimento.parametros.ocr_workers }}</td></tr>
+          <tr><th>Páginas em OCR</th><td>{{ d.experimento.get('paginas_ocr', '-') }}</td></tr>
+          <tr><th>Duração</th><td>{{ d.experimento.get('duracao_s', '-') }} s</td></tr>
           <tr><th>Versão extrato_pdf</th><td>{{ d.experimento.versoes.extrato_pdf }}</td></tr>
         </table>
         <h3 style="margin-top:1rem">Log de execução</h3>

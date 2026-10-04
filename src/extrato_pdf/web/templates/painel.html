@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% from "_macros.html" import badge_status, stat_card, empty_state %}
+{% from "_macros.html" import badge_status, stat_card, seletor_corpus %}
 
 {% block title %}Painel{% endblock %}
 {% block content %}
   <header class="page-header">
     <div>
       <h1 class="page-title">Painel</h1>
-      <p class="page-sub">Visão geral e taxas de consistência <strong>separadas por condição</strong> A / B / C (sem misturar).</p>
+      <p class="page-sub">Corpus <strong>{{ corpus.rotulo }}</strong>. As taxas de A, B e C não se misturam. A matriz abaixo compara o nativo com 100, 200 e 300 DPI.</p>
     </div>
   </header>
 
@@ -29,10 +29,60 @@
     </form>
   </div>
 
+  <div class="panel">
+    {{ seletor_corpus(corpora, corpus) }}
+  </div>
+
   <div class="grid">
-    {{ stat_card("PDFs em entrada", resumo.qtd_pdfs) }}
-    {{ stat_card("Execuções geradas", resumo.qtd_resultados, "soma A+B+C (arquivos)") }}
+    {{ stat_card("PDFs neste corpus", resumo.qtd_pdfs) }}
+    {{ stat_card("Execuções geradas", resumo.qtd_resultados, "soma A+B+C deste corpus") }}
     {{ stat_card("Referências manuais", resumo.qtd_referencias) }}
+  </div>
+
+  <div class="panel">
+    <h2>Parâmetros desta bateria</h2>
+    <p class="muted">O DPI do corpus é a resolução da digitalização sintética. O DPI do OCR é o do Tesseract e fica fixo para não misturar as duas variáveis.</p>
+    <div class="param-strip">
+      <span class="param-chip">Tolerância <strong>{{ parametros.tolerancia | brl }}</strong></span>
+      <span class="param-chip">Limiar de localização <strong>{{ parametros.limiar_localizacao }}</strong></span>
+      <span class="param-chip">Página com texto <strong>≥ {{ parametros.min_caracteres }}</strong> caracteres</span>
+      <span class="param-chip">Nativo se <strong>≥ {{ parametros.percentual_nativo }}%</strong> das páginas têm texto</span>
+      <span class="param-chip">OCR <strong>{{ parametros.ocr_dpi }} DPI</strong> · {{ parametros.ocr_workers }} workers · {{ parametros.ocr_idioma }}</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Corpus × condição</h2>
+    <p class="muted">Cada célula é a taxa de status consistente naquele corpus e naquela condição. O traço é a proporção. O link abre a lista.</p>
+    <div class="table-wrap">
+      <table class="matriz-table">
+        <thead>
+          <tr>
+            <th>Corpus</th>
+            <th>Origem</th>
+            <th>Condição A</th>
+            <th>Condição B</th>
+            <th>Condição C</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for linha in matriz %}
+          <tr>
+            <td><a href="/resultados?corpus={{ linha.id }}">{{ linha.rotulo }}</a></td>
+            <td class="muted">{% if linha.dpi %}raster {{ linha.dpi }} DPI{% else %}texto nativo{% endif %}</td>
+            {% for celula in linha.celulas %}
+            <td class="matriz-cell matriz-cell--{{ celula.condicao | lower }}">
+              <a href="{{ celula.href }}">
+                {% if celula.total %}{{ celula.taxa_consistente }}% · {{ celula.total }}{% else %}sem execução{% endif %}
+              </a>
+              <div class="matriz-bar" aria-hidden="true"><span style="width: {{ celula.taxa_consistente }}%"></span></div>
+            </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 
   <div class="panel">
@@ -40,35 +90,30 @@
     <p class="muted chart-caption">
       Cada taxa usa apenas os resultados da própria condição. Misturar A+B+C no mesmo percentual distorce a comparação experimental.
     </p>
-    {% set tem_algum = resumo.por_condicao | selectattr('total') | list %}
-    {% if tem_algum %}
-      <div class="cond-grid">
-        {% for c in resumo.por_condicao %}
-          <article class="cond-card cond-card--{{ c.condicao | lower }}">
-            <header class="cond-card-head">
-              <span class="cond-label">Condição {{ c.condicao }}</span>
-              <a class="muted" href="{{ c.href_resultados }}">ver resultados</a>
-            </header>
-            <div class="cond-taxa {% if c.taxa_consistente >= 80 %}ok{% elif c.taxa_consistente >= 50 %}warn{% else %}err{% endif %}">
-              {{ c.taxa_consistente }}%
+    <div class="cond-grid">
+      {% for c in resumo.por_condicao %}
+        <article class="cond-card cond-card--{{ c.condicao | lower }}">
+          <header class="cond-card-head">
+            <span class="cond-label">Condição {{ c.condicao }}</span>
+            <a class="muted" href="{{ c.href_resultados }}">ver resultados</a>
+          </header>
+          <div class="cond-taxa {% if c.total == 0 %}muted{% elif c.taxa_consistente >= 80 %}ok{% elif c.taxa_consistente >= 50 %}warn{% else %}err{% endif %}">
+            {{ c.taxa_consistente }}%
+          </div>
+          <p class="stat-hint">taxa <code>consistente</code> · {{ c.total }} PDF(s)</p>
+          {% if c.por_status %}
+            <div class="status-distribution">
+              {% for status, qtd in c.por_status.items() %}
+                {{ badge_status(status) }}
+                <span class="muted">× {{ qtd }}</span>
+              {% endfor %}
             </div>
-            <p class="stat-hint">taxa <code>consistente</code> · {{ c.total }} PDF(s)</p>
-            {% if c.por_status %}
-              <div class="status-distribution">
-                {% for status, qtd in c.por_status.items() %}
-                  {{ badge_status(status) }}
-                  <span class="muted">× {{ qtd }}</span>
-                {% endfor %}
-              </div>
-            {% else %}
-              <p class="muted">Sem execuções nesta condição.</p>
-            {% endif %}
-          </article>
-        {% endfor %}
-      </div>
-    {% else %}
-      {{ empty_state("Nenhum resultado ainda", "Processe PDFs em lote (A, B e C) para popular o dashboard por condição.", "Ir para lote", "/lote") }}
-    {% endif %}
+          {% else %}
+            <p class="muted">Sem execuções nesta condição.</p>
+          {% endif %}
+        </article>
+      {% endfor %}
+    </div>
   </div>
 
   <div class="panel">
@@ -79,7 +124,7 @@
           <li>
             <div>
               <strong>{{ r.arquivo }}</strong>
-              <span class="muted"> · cond. {{ r.condicao or '-' }}</span>
+              <span class="muted"> · {{ r.corpus_rotulo or corpus.rotulo }} · cond. {{ r.condicao or '-' }}{% if r.duracao_s is not none %} · {{ r.duracao_s }}s{% endif %}</span>
             </div>
             <div class="actions">
               {{ badge_status(r.status) }}

@@ -1,8 +1,9 @@
 /**
- * UI shell: toasts, tabs, drawer, tema, menu mobile.
+ * UI shell: toasts, tabs, drawer, tema e menu lateral.
  */
 (function () {
   const STORAGE_THEME = "extrato-pdf-theme";
+  const STORAGE_NAV = "extrato-pdf-nav";
   const MQ_MOBILE = "(max-width: 960px)";
 
   function el(id) {
@@ -124,41 +125,66 @@
   }
 
   function sidebarAberta() {
+    return document.documentElement.classList.contains("nav-open");
+  }
+
+  function definirSidebar(aberta, persistir) {
     const sidebar = el("sidebar");
-    return Boolean(sidebar && sidebar.classList.contains("open"));
+    const overlay = el("sidebar-overlay");
+    const toggle = el("menu-toggle");
+    const mobile = isMobile();
+    document.documentElement.classList.toggle("nav-open", aberta);
+    document.body.classList.toggle("nav-open", aberta && mobile);
+    if (sidebar) {
+      sidebar.toggleAttribute("inert", !aberta);
+      sidebar.setAttribute("aria-hidden", aberta ? "false" : "true");
+    }
+    if (overlay) {
+      const cobre = aberta && mobile;
+      overlay.classList.toggle("is-visible", cobre);
+      overlay.setAttribute("aria-hidden", cobre ? "false" : "true");
+    }
+    if (toggle) {
+      toggle.setAttribute("aria-expanded", aberta ? "true" : "false");
+      toggle.setAttribute("aria-label", aberta ? "Fechar menu" : "Abrir menu");
+    }
+    if (persistir && !mobile) {
+      try {
+        localStorage.setItem(STORAGE_NAV, aberta ? "open" : "closed");
+      } catch (e) {
+        /* ignore */
+      }
+    }
   }
 
   function fecharSidebar() {
-    const sidebar = el("sidebar");
-    const overlay = el("sidebar-overlay");
-    const toggle = el("menu-toggle");
-    if (sidebar) sidebar.classList.remove("open");
-    if (overlay) {
-      overlay.classList.remove("is-visible");
-      overlay.setAttribute("aria-hidden", "true");
-    }
-    if (toggle) toggle.setAttribute("aria-expanded", "false");
-    document.body.classList.remove("nav-open");
+    definirSidebar(false, true);
   }
 
   function abrirSidebar() {
-    if (!isMobile()) return;
-    const sidebar = el("sidebar");
-    const overlay = el("sidebar-overlay");
-    const toggle = el("menu-toggle");
-    if (sidebar) sidebar.classList.add("open");
-    if (overlay) {
-      overlay.classList.add("is-visible");
-      overlay.setAttribute("aria-hidden", "false");
+    definirSidebar(true, true);
+  }
+
+  function restaurarSidebar() {
+    if (isMobile()) {
+      definirSidebar(false, false);
+      return;
     }
-    if (toggle) toggle.setAttribute("aria-expanded", "true");
-    document.body.classList.add("nav-open");
+    let salvo = null;
+    try {
+      salvo = localStorage.getItem(STORAGE_NAV);
+    } catch (e) {
+      /* ignore */
+    }
+    definirSidebar(salvo !== "closed", false);
   }
 
   function initMobileNav() {
     const toggle = el("menu-toggle");
     const close = el("sidebar-close");
     const overlay = el("sidebar-overlay");
+
+    restaurarSidebar();
 
     if (toggle) {
       toggle.addEventListener("click", (e) => {
@@ -174,6 +200,7 @@
         e.preventDefault();
         e.stopPropagation();
         fecharSidebar();
+        if (toggle) toggle.focus();
       });
     }
 
@@ -186,7 +213,8 @@
 
     document.querySelectorAll(".nav-link").forEach((link) => {
       link.addEventListener("click", () => {
-        if (isMobile()) fecharSidebar();
+        if (!isMobile()) return;
+        window.setTimeout(() => fecharSidebar(), 0);
       });
     });
 
@@ -194,8 +222,12 @@
       if (e.key === "Escape" && sidebarAberta()) fecharSidebar();
     });
 
+    let eraMobile = isMobile();
     window.addEventListener("resize", () => {
-      if (!isMobile() && sidebarAberta()) fecharSidebar();
+      const agora = isMobile();
+      if (agora === eraMobile) return;
+      eraMobile = agora;
+      restaurarSidebar();
     });
   }
 

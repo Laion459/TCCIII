@@ -8,6 +8,75 @@ from extrato_pdf.web.experimentos import (
 )
 
 
+def test_listar_pdfs_separa_corpora(tmp_path: Path, monkeypatch):
+    from extrato_pdf.web import servicos
+
+    entrada = tmp_path / "entrada"
+    (entrada / "pdf nativo").mkdir(parents=True)
+    (entrada / "pdf-100-dpi").mkdir()
+    (entrada / "pdf nativo" / "contas 012023.pdf").write_bytes(b"%PDF")
+    (entrada / "pdf-100-dpi" / "contas 012023.pdf").write_bytes(b"%PDF-100")
+    (entrada / "solto.pdf").write_bytes(b"%PDF")
+    monkeypatch.setattr(servicos, "pasta_entrada", lambda: entrada)
+
+    nativos = servicos.listar_pdfs_entrada("pdf-nativo")
+    rasters = servicos.listar_pdfs_entrada("pdf-100-dpi")
+
+    assert [item.nome for item in nativos] == ["contas 012023.pdf"]
+    assert [item.nome for item in rasters] == ["contas 012023.pdf"]
+    assert servicos.pasta_gravacao_corpus("pdf-100-dpi").name == "pdf-100-dpi"
+
+
+def test_nome_pdf_rejeita_caminho():
+    import pytest
+
+    from extrato_pdf.web.servicos import nome_pdf_seguro
+
+    with pytest.raises(ValueError):
+        nome_pdf_seguro(r"..\contas 012023.pdf")
+
+
+def test_esteira_combina_corpus_e_condicao(tmp_path: Path, monkeypatch):
+    from extrato_pdf.web import servicos
+
+    entrada = tmp_path / "entrada"
+    (entrada / "pdf nativo").mkdir(parents=True)
+    (entrada / "pdf-100-dpi").mkdir()
+    (entrada / "pdf-200-dpi").mkdir()
+    (entrada / "pdf nativo" / "contas 012023.pdf").write_bytes(b"%PDF")
+    (entrada / "pdf nativo" / "contas 022023.pdf").write_bytes(b"%PDF")
+    (entrada / "pdf-100-dpi" / "contas 012023.pdf").write_bytes(b"%PDF")
+    (entrada / "pdf-200-dpi" / "contas 012023.pdf").write_bytes(b"%PDF")
+    monkeypatch.setattr(servicos, "pasta_entrada", lambda: entrada)
+
+    itens = servicos.montar_esteira(
+        ["pdf-200-dpi", "pdf-nativo", "pdf-100-dpi"],
+        ["C", "A"],
+        ["contas 022023.pdf", "contas 012023.pdf"],
+    )
+    pares = [(item.corpus, item.condicao, item.arquivo) for item in itens]
+    assert pares == [
+        ("pdf-nativo", "A", "contas 022023.pdf"),
+        ("pdf-nativo", "A", "contas 012023.pdf"),
+        ("pdf-nativo", "C", "contas 022023.pdf"),
+        ("pdf-nativo", "C", "contas 012023.pdf"),
+        ("pdf-100-dpi", "A", "contas 012023.pdf"),
+        ("pdf-100-dpi", "C", "contas 012023.pdf"),
+        ("pdf-200-dpi", "A", "contas 012023.pdf"),
+        ("pdf-200-dpi", "C", "contas 012023.pdf"),
+    ]
+
+
+def test_esteira_rejeita_selecao_vazia():
+    from extrato_pdf.web import servicos
+    import pytest
+
+    with pytest.raises(ValueError, match="condição"):
+        servicos.normalizar_condicoes([])
+    with pytest.raises(ValueError, match="corpus"):
+        servicos.normalizar_corpora([])
+
+
 def test_agregar_corpus_vazio(tmp_path: Path):
     corpus = agregar_corpus_experimentos(tmp_path)
     assert corpus["A"]["total"] == 0

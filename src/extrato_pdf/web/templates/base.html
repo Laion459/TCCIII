@@ -16,6 +16,11 @@
           t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
         }
         document.documentElement.setAttribute("data-theme", t);
+        var nav = localStorage.getItem("extrato-pdf-nav");
+        var mobile = window.matchMedia("(max-width: 960px)").matches;
+        if (!mobile && nav !== "closed") {
+          document.documentElement.classList.add("nav-open");
+        }
       } catch (e) {}
     })();
   </script>

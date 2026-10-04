@@ -15,13 +15,13 @@
     "sac|ouvidoria|limite|saldo bloq": -3
   },
   "classificacao_pdf": {
-    "min_caracteres_pagina_com_texto": 40,
+    "min_caracteres_pagina_com_texto": 10,
     "percentual_minimo_nativo": 90.0,
     "comentario": "DP03: pagina com texto se >=40 chars; nativo se >=90% das paginas; escaneado se 0%; senao hibrido. 90% alinha o piloto (paginas vazias/imagem) a classe hibrido."
   },
   "ocr": {
     "idioma": "por",
-    "dpi": 200,
+    "dpi": 300,
     "workers": 8,
     "tesseract_cmd": "C:\\\\Program Files\\\\Tesseract-OCR\\\\tesseract.exe"
   },

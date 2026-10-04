@@ -17,6 +17,32 @@ def test_escaneado():
     assert c.tipo == TipoPdf.ESCANEADO
 
 
+def test_timbre_sozinho_nao_conta_como_texto():
+    config = carregar_config()
+    timbre = "\n".join(
+        [
+            "ANEXO DE CONTAS FINANCEIRAS",
+            "Período base: AGO 2023",
+            "RESID. PORTAL DO SANTINHO",
+            "21.444.827/0001-64",
+            "1",
+            "EMBRACON CONDOMINIOS",
+            "31/05/2024 10:47:34",
+            "28 / 159",
+        ]
+    )
+    pags = [
+        PaginaTexto(1, "x" * 50, OrigemTexto.NATIVO),
+        PaginaTexto(2, timbre, OrigemTexto.NATIVO),
+        PaginaTexto(3, "", OrigemTexto.NATIVO),
+        PaginaTexto(4, "", OrigemTexto.NATIVO),
+        PaginaTexto(5, "", OrigemTexto.NATIVO),
+    ]
+    c = classificar_pdf(pags, config)
+    assert c.paginas_com_texto == 1
+    assert c.tipo == TipoPdf.HIBRIDO
+
+
 def test_hibrido():
     config = carregar_config()
     pags = [

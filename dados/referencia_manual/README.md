@@ -22,7 +22,7 @@ Mapa canônico: `_validacao_independente/mapa_ids.json` e `config/default.json` 
 
 Um JSON por documento (ver `exemplo_formato.json`), com:
 - instituição, período, saldo inicial, entradas, saídas, saldo final
-- `paginas_extrato` (índices 0-based do PyMuPDF)
+- `paginas_extrato` (índices 0-based do PyMuPDF). O pipeline grava a página a partir de 1, e a métrica soma 1 na comparação. Em D04, os índices 7 e 8 são as páginas 8 e 9 do PDF.
 - observações metodológicas
 
 ## Status atual

@@ -6,10 +6,11 @@
   <header class="page-header">
     <div>
       <h1 class="page-title">Processar um PDF</h1>
-      <p class="page-sub">Pipeline completo com stepper de etapas, barra de progresso e log ao vivo.</p>
+      <p class="page-sub">Um PDF pode percorrer vários corpora e várias condições na mesma esteira.</p>
     </div>
   </header>
 
+  {% if erro %}<div class="alert err">{{ erro }}</div>{% endif %}
   <div id="alert-erro" class="alert err" hidden></div>
   <div id="alert-ok" class="alert ok" hidden></div>
   <div id="live-status" class="sr-only" aria-live="polite"></div>
@@ -20,19 +21,43 @@
         <label for="pdf">PDF</label>
         <select id="pdf" name="pdf" required>
           {% for p in pdfs %}
-            <option value="{{ p.nome }}" {% if selecionado == p.nome %}selected{% endif %}>{{ p.nome }} ({{ p.tamanho_mb }} MB)</option>
+            <option value="{{ p.nome }}" {% if selecionado == p.nome %}selected{% endif %}>{{ p.nome }}</option>
           {% endfor %}
         </select>
       </div>
       <div class="form-row">
-        <label for="condicao">Condição experimental</label>
-        <select id="condicao" name="condicao">
-          <option value="A" {% if condicao == 'A' %}selected{% endif %}>A - só nativo (rápido)</option>
-          <option value="C" {% if not condicao or condicao == 'C' %}selected{% endif %}>C - integrada (recomendado)</option>
-          <option value="B" {% if condicao == 'B' %}selected{% endif %}>B - só OCR (lento)</option>
-        </select>
+        <label>Corpora</label>
+        <div class="check-actions">
+          <button class="btn secondary" type="button" data-marcar="corpora">Marcar todos</button>
+          <button class="btn secondary" type="button" data-limpar="corpora">Limpar</button>
+        </div>
+        <div class="check-list check-list--compact">
+          {% for c in corpora %}
+            <label>
+              <input type="checkbox" name="corpora" value="{{ c.id }}" {% if c.id == 'pdf-nativo' %}checked{% endif %} />
+              {{ c.rotulo }} ({{ c.qtd }})
+            </label>
+          {% endfor %}
+        </div>
       </div>
-      <button class="btn" type="submit" id="btn-processar">Processar</button>
+      <div class="form-row">
+        <label>Condições</label>
+        <div class="check-actions">
+          <button class="btn secondary" type="button" data-marcar="condicoes">Marcar todas</button>
+          <button class="btn secondary" type="button" data-limpar="condicoes">Limpar</button>
+        </div>
+        <div class="check-list check-list--compact">
+          <label><input type="checkbox" name="condicoes" value="A" /> A - texto nativo</label>
+          <label><input type="checkbox" name="condicoes" value="B" /> B - OCR em todas as páginas</label>
+          <label><input type="checkbox" name="condicoes" value="C" checked /> C - integrada</label>
+        </div>
+        <p class="muted" id="aviso-b" hidden>A condição B relê cada página com OCR.</p>
+      </div>
+      <p id="resumo-esteira" class="muted"></p>
+      <div class="actions">
+        <button class="btn" type="submit" id="btn-processar">Processar</button>
+        <button class="btn secondary danger" type="button" id="btn-cancelar" hidden>Cancelar</button>
+      </div>
     </form>
   </div>
 
@@ -56,7 +81,7 @@
     </div>
     <div class="table-wrap">
     <table>
-      <thead><tr><th>Arquivo</th><th>Status</th><th>Detalhe</th><th>Tempo</th><th></th></tr></thead>
+      <thead><tr><th>Corpus</th><th>Cond.</th><th>Arquivo</th><th>Status</th><th>Detalhe</th><th>Tempo</th><th></th></tr></thead>
       <tbody id="prog-tabela"></tbody>
     </table>
     </div>
@@ -88,28 +113,74 @@
       contagemId: null,
       tabelaBodyId: "prog-tabela",
       logsId: "prog-logs",
-      cancelBtnId: null,
+      cancelBtnId: "btn-cancelar",
       submitBtnId: "btn-processar",
     };
 
-    document.getElementById("form-processar").addEventListener("submit", async (e) => {
+    let jobIdAtual = null;
+    const formProcessar = document.getElementById("form-processar");
+
+    function atualizarResumo() {
+      const resumo = ExtratoProgress.resumoEsteira(formProcessar);
+      const execucoes = resumo.total === 1 ? "execução" : "execuções";
+      document.getElementById("resumo-esteira").textContent = resumo.total
+        ? `${resumo.corpora} corpus × ${resumo.condicoes} condição(ões) = ${resumo.total} ${execucoes} deste PDF`
+        : "Marque ao menos um corpus e uma condição.";
+      document.getElementById("aviso-b").hidden = !resumo.temB;
+    }
+
+    formProcessar.addEventListener("change", atualizarResumo);
+    formProcessar.querySelectorAll("[data-marcar],[data-limpar]").forEach((botao) => {
+      botao.addEventListener("click", () => {
+        const nome = botao.dataset.marcar || botao.dataset.limpar;
+        ExtratoProgress.marcarGrupo(formProcessar, nome, Boolean(botao.dataset.marcar));
+        atualizarResumo();
+      });
+    });
+    atualizarResumo();
+
+    document.getElementById("btn-cancelar").addEventListener("click", async () => {
+      if (!jobIdAtual) return;
+      await fetch(`/api/jobs/${jobIdAtual}/cancelar`, { method: "POST" });
+    });
+
+    formProcessar.addEventListener("submit", async (e) => {
       e.preventDefault();
       document.getElementById("alert-erro").hidden = true;
       document.getElementById("alert-ok").hidden = true;
       document.getElementById("painel-resultado").hidden = true;
-      const pdf = document.getElementById("pdf").value;
-      const condicao = document.getElementById("condicao").value;
+      const fd = new FormData(e.target);
+      const pdf = fd.get("pdf");
+      const condicoes = fd.getAll("condicoes");
+      const corpora = fd.getAll("corpora");
       try {
-        ExtratoProgress.iniciarUnitario(pdf, condicao, {
+        if (!pdf || !condicoes.length || !corpora.length) {
+          throw new Error("Escolha o PDF e marque ao menos um corpus e uma condição.");
+        }
+        const resp = await fetch("/api/processar/iniciar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pdf, condicoes, corpora }),
+        });
+        if (!resp.ok) {
+          const err = await resp.json();
+          throw new Error(err.detail || "Falha ao iniciar");
+        }
+        const { job_id } = await resp.json();
+        jobIdAtual = job_id;
+        document.getElementById("btn-cancelar").hidden = false;
+        ExtratoProgress.acompanharJob(job_id, {
           ...opts,
           onComplete(job) {
-            const item = job.itens[0];
+            document.getElementById("btn-cancelar").hidden = true;
+            const concluidos = job.itens.filter((item) => item.status === "ok").length;
             document.getElementById("alert-ok").hidden = false;
             document.getElementById("alert-ok").textContent =
-              `${item.arquivo} → ${item.resultado_status || item.status}`;
-            if (item.caminho_relativo) {
+              `${concluidos}/${job.total} execução(ões) concluída(s)`;
+            const ultimo = [...job.itens].reverse().find((item) => item.caminho_relativo);
+            if (ultimo) {
               document.getElementById("link-detalhe").href =
-                `/resultados/ver?path=${encodeURIComponent(item.caminho_relativo)}`;
+                `/resultados/ver?path=${encodeURIComponent(ultimo.caminho_relativo)}`;
               document.getElementById("painel-resultado").hidden = false;
             }
           },

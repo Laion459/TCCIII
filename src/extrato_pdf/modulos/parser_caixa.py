@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import calendar
 import re
+from collections import Counter
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional
 
@@ -29,6 +31,10 @@ _RE_CAIXA_CONTA_ALT = re.compile(
     re.I,
 )
 _RE_NUM_US = re.compile(r"^-?\d+\.\d{2}$")
+_RE_TOKEN_US = re.compile(r"(?<![\d.])(-?\d+\.\d{2})(?![\d.])")
+# D04 vai de 1/jan a 20/fev (50 dias). Acima de dois meses o intervalo deixa de ser extrato mensal.
+_DIAS_MAXIMOS_EXTRATO_MENSAL = 62
+_DISTANCIA_MINIMA_ANO_ISOLADO = 2
 _RE_MES = re.compile(r"M[eê]s:\s*(\w+)/(\d{4})", re.I)
 _RE_INTERVALO = re.compile(
     r"PER[IÍ]ODO\s*:\s*(\d{2}/\d{2}/\d{4})\s*[-–]\s*(\d{2}/\d{2}/\d{4})",
@@ -68,6 +74,7 @@ class AgregadoCaixa:
     periodo_fim: Optional[str]
     total_entradas_inferido: Optional[Decimal] = None
     entradas_divergem_identidade: bool = False
+    periodo_exige_revisao: bool = False
 
 
 def _q(valor: Decimal) -> Decimal:
@@ -79,36 +86,78 @@ def _cortar_lancamentos_do_dia(texto: str) -> str:
     return re.split(r"Lan[cç]amentos do Dia", texto, flags=re.I)[0]
 
 
-def _iso_de_data_br(data_br: str) -> str:
-    dia, mes, ano = data_br.split("/")
-    return f"{ano}-{mes}-{dia}"
+def _iso_de_data_br(data_br: str) -> Optional[str]:
+    try:
+        dia, mes, ano = data_br.split("/")
+        iso = f"{int(ano):04d}-{int(mes):02d}-{int(dia):02d}"
+        date.fromisoformat(iso)
+    except ValueError:
+        return None
+    return iso
 
 
-def _periodo_caixa(texto: str) -> tuple[Optional[str], Optional[str]]:
+def _dias_do_intervalo(inicio: str, fim: str) -> Optional[int]:
+    try:
+        return (date.fromisoformat(fim) - date.fromisoformat(inicio)).days
+    except ValueError:
+        return None
+
+
+def _periodo_exige_revisao(inicio: Optional[str], fim: Optional[str]) -> bool:
+    if not inicio or not fim:
+        return False
+    dias = _dias_do_intervalo(inicio, fim)
+    if dias is None:
+        return False
+    return dias < 0 or dias > _DIAS_MAXIMOS_EXTRATO_MENSAL
+
+
+def _periodo_por_datas(datas_br: list[str]) -> tuple[Optional[str], Optional[str]]:
+    """Menor e maior data, sem ano que aparece uma vez e está longe do grupo principal."""
+    iso: list[str] = []
+    for data in datas_br:
+        convertida = _iso_de_data_br(data)
+        if convertida is not None:
+            iso.append(convertida)
+    if not iso:
+        return None, None
+    anos = [int(data[:4]) for data in iso]
+    contagem = Counter(anos)
+    principal = contagem.most_common(1)[0][0]
+    mantidas = [
+        data
+        for data, ano in zip(iso, anos)
+        if not (
+            contagem[ano] == 1 and abs(ano - principal) >= _DISTANCIA_MINIMA_ANO_ISOLADO
+        )
+    ]
+    if not mantidas:
+        mantidas = iso
+    ordenadas = sorted(set(mantidas))
+    return ordenadas[0], ordenadas[-1]
+
+
+def _periodo_caixa(texto: str) -> tuple[Optional[str], Optional[str], bool]:
     intervalo = _RE_INTERVALO.search(texto)
     if intervalo:
-        return _iso_de_data_br(intervalo.group(1)), _iso_de_data_br(intervalo.group(2))
+        inicio = _iso_de_data_br(intervalo.group(1))
+        fim = _iso_de_data_br(intervalo.group(2))
+        return inicio, fim, _periodo_exige_revisao(inicio, fim)
 
     mm = _RE_MES.search(texto)
     if mm and mm.group(1).lower() in _MESES:
         ano = int(mm.group(2))
         mes = int(_MESES[mm.group(1).lower()])
         ultimo = calendar.monthrange(ano, mes)[1]
-        return f"{ano:04d}-{mes:02d}-01", f"{ano:04d}-{mes:02d}-{ultimo:02d}"
+        inicio = f"{ano:04d}-{mes:02d}-01"
+        fim = f"{ano:04d}-{mes:02d}-{ultimo:02d}"
+        return inicio, fim, False
 
     datas = re.findall(r"\b(\d{2}/\d{2}/\d{4})\b", texto)
     if datas:
-        try:
-            iso = sorted(
-                {
-                    f"{a}-{m}-{d}"
-                    for d, m, a in (x.split("/") for x in datas)
-                }
-            )
-            return iso[0], iso[-1]
-        except Exception:  # noqa: BLE001
-            return None, None
-    return None, None
+        inicio, fim = _periodo_por_datas(datas)
+        return inicio, fim, _periodo_exige_revisao(inicio, fim)
+    return None, None, False
 
 
 def _agregar_caixa_br(texto: str) -> tuple[
@@ -185,19 +234,38 @@ def _diagnosticar_entradas(
     return inferido, abs(entradas - inferido) > TOL
 
 
-def _agregar_caixa_us(texto: str) -> tuple[
-    Optional[Decimal],
-    Optional[Decimal],
-    Optional[Decimal],
-    Optional[Decimal],
-]:
-    """Layout US impresso: valor e saldo em linhas '-1234.56' / '1234.56'."""
-    texto = _cortar_lancamentos_do_dia(texto)
-    linhas = [ln.strip() for ln in texto.splitlines() if ln.strip()]
+def _eh_saldo_dia(historico: str) -> bool:
+    """OCR às vezes gruda o rótulo em SALDODIA."""
+    return re.search(r"SALDO\s*DIA", historico, re.I) is not None
+
+
+def _par_us_na_linha(linha: str) -> Optional[tuple[Decimal, Decimal, str]]:
+    """Valor e saldo no fim da linha do histórico, no formato -1234.56."""
+    achados = list(_RE_TOKEN_US.finditer(linha))
+    if len(achados) < 2:
+        return None
+    valor_m, saldo_m = achados[-2], achados[-1]
+    resto = linha[saldo_m.end() :]
+    if re.search(r"[A-Za-z0-9]", resto):
+        return None
+    try:
+        valor = Decimal(valor_m.group(1)).quantize(Q)
+        saldo = Decimal(saldo_m.group(1)).quantize(Q)
+    except Exception:  # noqa: BLE001
+        return None
+    return valor, saldo, linha[: valor_m.start()]
+
+
+def _coletar_movimentos_us(linhas: list[str]) -> list[tuple[Decimal, Decimal, str]]:
+    """Aceita o par em duas linhas (texto nativo) ou na mesma linha do histórico (OCR)."""
     movimentos: list[tuple[Decimal, Decimal, str]] = []
     i = 0
-    while i < len(linhas) - 1:
-        if _RE_NUM_US.match(linhas[i]) and _RE_NUM_US.match(linhas[i + 1]):
+    while i < len(linhas):
+        if (
+            i + 1 < len(linhas)
+            and _RE_NUM_US.match(linhas[i])
+            and _RE_NUM_US.match(linhas[i + 1])
+        ):
             hist = linhas[i - 1] if i >= 1 else ""
             try:
                 valor = Decimal(linhas[i]).quantize(Q)
@@ -208,7 +276,28 @@ def _agregar_caixa_us(texto: str) -> tuple[
             movimentos.append((valor, saldo, hist.upper()))
             i += 2
             continue
+        par = _par_us_na_linha(linhas[i])
+        if par is not None:
+            valor, saldo, hist = par
+            if not hist.strip() and i >= 1:
+                hist = linhas[i - 1]
+            movimentos.append((valor, saldo, hist.upper()))
+            i += 1
+            continue
         i += 1
+    return movimentos
+
+
+def _agregar_caixa_us(texto: str) -> tuple[
+    Optional[Decimal],
+    Optional[Decimal],
+    Optional[Decimal],
+    Optional[Decimal],
+]:
+    """Layout US: valor e saldo em linhas próprias ou no fim da linha do histórico."""
+    texto = _cortar_lancamentos_do_dia(texto)
+    linhas = [ln.strip() for ln in texto.splitlines() if ln.strip()]
+    movimentos = _coletar_movimentos_us(linhas)
 
     if not movimentos:
         return None, None, None, None
@@ -216,9 +305,9 @@ def _agregar_caixa_us(texto: str) -> tuple[
     entradas = Decimal("0.00")
     saidas = Decimal("0.00")
     movs_reais = [
-        (v, s, h) for v, s, h in movimentos if "SALDO DIA" not in h and v != 0
+        (v, s, h) for v, s, h in movimentos if not _eh_saldo_dia(h) and v != 0
     ]
-    saldos_dia = [(v, s) for v, s, h in movimentos if "SALDO DIA" in h]
+    saldos_dia = [(v, s) for v, s, h in movimentos if _eh_saldo_dia(h)]
 
     for valor, _saldo, _hist in movs_reais:
         if valor > 0:
@@ -246,7 +335,7 @@ def _agregar_caixa_us(texto: str) -> tuple[
 def agregar_movimentos_caixa(texto: str) -> AgregadoCaixa:
     """Lê saldos e movimentos. A identidade contábil não altera total_entradas."""
     texto = _cortar_lancamentos_do_dia(texto)
-    pi, pf = _periodo_caixa(texto)
+    pi, pf, periodo_exige_revisao = _periodo_caixa(texto)
 
     if re.search(r"[\d.]+,\d{2}\s*[CD]\b", texto, re.I):
         si, entradas, saidas, sf = _agregar_caixa_br(texto)
@@ -263,4 +352,5 @@ def agregar_movimentos_caixa(texto: str) -> AgregadoCaixa:
         periodo_fim=pf,
         total_entradas_inferido=inferido,
         entradas_divergem_identidade=diverge,
+        periodo_exige_revisao=periodo_exige_revisao,
     )

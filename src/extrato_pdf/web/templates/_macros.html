@@ -23,6 +23,30 @@
 </div>
 {% endmacro %}
 
+{% macro seletor_corpus(corpora, atual, incluir_todos=false) %}
+<div class="form-row">
+  <label for="corpus">Corpus</label>
+  <select id="corpus" name="corpus" onchange="var p=new window.URLSearchParams(window.location.search); p.set('corpus', this.value); window.location.search=p.toString()">
+    {% if incluir_todos %}
+      <option value="todos" {% if atual.id == 'todos' %}selected{% endif %}>Todos os corpora</option>
+    {% endif %}
+    {% for c in corpora %}
+      <option value="{{ c.id }}" {% if c.id == atual.id %}selected{% endif %}>{{ c.rotulo }} ({{ c.qtd }})</option>
+    {% endfor %}
+  </select>
+  <p class="muted">{{ atual.descricao }}</p>
+  {% if atual.sintetico %}
+    <p class="muted">A referência manual continua sendo a do arquivo original. Neste corpus a condição A não vê texto; o contraste do OCR está em B e C.</p>
+  {% endif %}
+  {% if atual.qtd == 0 %}
+    <p class="muted">Nenhum PDF nesta pasta. Os nativos ficam em <code>dados/entrada/pdf nativo</code>. As versões de DPI saem de <code>python scripts/gerar_pdfs_rasterizados.py</code>.</p>
+  {% endif %}
+  {% if atual.leitura_legada %}
+    <p class="muted">Os resultados exibidos ainda estão na pasta anterior <code>resultados/experimentos/condicao_*</code>. A próxima bateria deste corpus grava em <code>resultados/experimentos/pdf-nativo/</code>.</p>
+  {% endif %}
+</div>
+{% endmacro %}
+
 {% macro pipeline_stepper(stepper_id='pipeline-stepper') %}
 <nav class="pipeline-stepper" id="{{ stepper_id }}" aria-label="Etapas do pipeline" hidden>
   <ol class="pipeline-steps"></ol>

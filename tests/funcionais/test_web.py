@@ -36,6 +36,9 @@ def test_lote_page_tem_progresso():
     assert "progress.js" in resp.text
     assert "pipeline-stepper" in resp.text
     assert "prog-sub-bar" in resp.text
+    assert 'name="corpora"' in resp.text
+    assert 'name="condicoes"' in resp.text
+    assert "Marcar todos" in resp.text
 
 
 def test_painel_resumo():

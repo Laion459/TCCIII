@@ -111,6 +111,11 @@ def aplicar_regras(
     if campos.ambiguidade_instituicao:
         alertas.append("Ambiguidade na identificação da instituição")
 
+    if campos.periodo_exige_revisao:
+        alertas.append(
+            "Período acima de 62 dias; deixa de ser um extrato mensal e exige revisão"
+        )
+
     divergencia_textual = any(
         "divergência" in alerta.lower() or "divergencia" in alerta.lower()
         for alerta in alertas
@@ -121,7 +126,12 @@ def aplicar_regras(
         status = StatusProcessamento.INCOMPLETO
     elif not consistente_aritmetico:
         status = StatusProcessamento.INCONSISTENTE
-    elif campos.ambiguidade_instituicao or divergencia_textual or localizacao_fraca:
+    elif (
+        campos.ambiguidade_instituicao
+        or divergencia_textual
+        or localizacao_fraca
+        or campos.periodo_exige_revisao
+    ):
         status = StatusProcessamento.REVISAO_NECESSARIA
     else:
         status = StatusProcessamento.CONSISTENTE

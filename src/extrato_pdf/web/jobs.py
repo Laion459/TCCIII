@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Callable, Optional
 
+from extrato_pdf.corpora import CorpusDesconhecidoError, obter_corpus
+
 
 class StatusJob(str, Enum):
     PENDENTE = "pendente"
@@ -28,6 +30,8 @@ class StatusItem(str, Enum):
 @dataclass
 class ItemJob:
     arquivo: str
+    corpus: str = "pdf-nativo"
+    condicao: str = ""
     status: StatusItem = StatusItem.AGUARDANDO
     resultado_status: Optional[str] = None
     instituicao: Optional[str] = None
@@ -39,6 +43,9 @@ class ItemJob:
     def para_dict(self) -> dict[str, Any]:
         return {
             "arquivo": self.arquivo,
+            "corpus": self.corpus,
+            "corpus_rotulo": _rotulo_corpus(self.corpus),
+            "condicao": self.condicao,
             "status": self.status.value,
             "resultado_status": self.resultado_status,
             "instituicao": self.instituicao,
@@ -54,6 +61,7 @@ class Job:
     id: str
     tipo: str
     condicao: str
+    corpus: str = "pdf-nativo"
     itens: list[ItemJob] = field(default_factory=list)
     status: StatusJob = StatusJob.PENDENTE
     mensagem: str = "Aguardando início"
@@ -137,14 +145,15 @@ class Job:
     def adicionar_log(self, texto: str) -> None:
         ts = datetime.now().strftime("%H:%M:%S")
         self.logs.append(f"[{ts}] {texto}")
-        if len(self.logs) > 80:
-            self.logs = self.logs[-80:]
+        if len(self.logs) > 600:
+            self.logs = self.logs[-600:]
 
     def para_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "tipo": self.tipo,
             "condicao": self.condicao,
+            "corpus": self.corpus,
             "status": self.status.value,
             "mensagem": self.mensagem,
             "arquivo_atual": self.arquivo_atual,
@@ -170,31 +179,39 @@ class GerenciadorJobs:
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
 
-    def criar_lote(self, condicao: str, arquivos: list[str]) -> Job:
+    def criar_esteira(self, tipo: str, itens: list[ItemJob]) -> Job:
+        condicoes: list[str] = []
+        corpora: list[str] = []
+        for item in itens:
+            if item.condicao and item.condicao not in condicoes:
+                condicoes.append(item.condicao)
+            if item.corpus and item.corpus not in corpora:
+                corpora.append(item.corpus)
         job_id = uuid.uuid4().hex[:12]
         job = Job(
             id=job_id,
-            tipo="lote",
-            condicao=condicao.upper(),
-            itens=[ItemJob(arquivo=n) for n in arquivos],
-            mensagem=f"{len(arquivos)} PDF(s) na fila",
+            tipo=tipo,
+            condicao="+".join(condicoes),
+            corpus=",".join(corpora),
+            itens=itens,
+            mensagem=f"{len(itens)} execução(ões) na esteira",
         )
         with self._lock:
             self._jobs[job_id] = job
         return job
 
-    def criar_unitario(self, arquivo: str, condicao: str) -> Job:
-        job_id = uuid.uuid4().hex[:12]
-        job = Job(
-            id=job_id,
-            tipo="unitario",
-            condicao=condicao.upper(),
-            itens=[ItemJob(arquivo=arquivo)],
-            mensagem=f"Processando {arquivo}",
+    def criar_lote(self, condicao: str, arquivos: list[str], corpus: str = "pdf-nativo") -> Job:
+        itens = [
+            ItemJob(arquivo=nome, corpus=corpus, condicao=condicao.upper())
+            for nome in arquivos
+        ]
+        return self.criar_esteira("lote", itens)
+
+    def criar_unitario(self, arquivo: str, condicao: str, corpus: str = "pdf-nativo") -> Job:
+        return self.criar_esteira(
+            "unitario",
+            [ItemJob(arquivo=arquivo, corpus=corpus, condicao=condicao.upper())],
         )
-        with self._lock:
-            self._jobs[job_id] = job
-        return job
 
     def obter(self, job_id: str) -> Optional[Job]:
         with self._lock:
@@ -232,6 +249,13 @@ class GerenciadorJobs:
                 job.finalizado_em = time.perf_counter()
 
         threading.Thread(target=_run, daemon=True).start()
+
+
+def _rotulo_corpus(corpus_id: str) -> str:
+    try:
+        return obter_corpus(corpus_id).rotulo
+    except CorpusDesconhecidoError:
+        return corpus_id
 
 
 gerenciador = GerenciadorJobs()

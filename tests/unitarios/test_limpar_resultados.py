@@ -28,9 +28,10 @@ def test_limpar_resultados_remove_saidas_e_preserva_readme(
     assert info["itens_removidos"] >= 1
     assert (resultados / "README.md").exists()
     assert not (resultados / "experimentos" / "condicao_c" / "doc1").exists()
-    assert (resultados / "experimentos" / "condicao_a").is_dir()
-    assert (resultados / "experimentos" / "condicao_b").is_dir()
-    assert (resultados / "experimentos" / "condicao_c").is_dir()
+    assert (resultados / "experimentos" / "pdf-nativo").is_dir()
+    assert (resultados / "experimentos" / "pdf-100-dpi").is_dir()
+    assert (resultados / "experimentos" / "pdf-200-dpi").is_dir()
+    assert (resultados / "experimentos" / "pdf-300-dpi").is_dir()
     assert (resultados / "metricas").is_dir()
     assert not (resultados / "metricas" / "metricas.json").exists()
 

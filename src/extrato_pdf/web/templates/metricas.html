@@ -1,22 +1,86 @@
 {% extends "base.html" %}
-{% from "_macros.html" import badge_status, empty_state %}
+{% from "_macros.html" import badge_status, empty_state, seletor_corpus %}
 
 {% block title %}Métricas experimentais{% endblock %}
 {% block content %}
   <header class="page-header">
     <div>
       <h1 class="page-title">Métricas experimentais</h1>
-      <p class="page-sub">Comparação A / B / C - corpus completo e métricas vs. referência manual.</p>
+      <p class="page-sub">Comparação A / B / C de <strong>{{ corpus.rotulo }}</strong> contra a mesma referência manual.</p>
     </div>
     <div class="actions">
       {% if dados and dados.laboratorio %}
-        <a class="btn" href="/metricas/relatorio" download title="Markdown com score 4/6, divergências A×C, inventário e tabelas detalhadas">
+        <a class="btn" href="/metricas/relatorio?corpus={{ corpus.id }}" download title="Markdown com score 4/6, divergências A×C, inventário e tabelas detalhadas">
           Gerar relatório completo
         </a>
       {% endif %}
-      <a class="btn secondary" href="/lote">Novo lote</a>
+      <a class="btn secondary" href="/lote?corpus={{ corpus.id }}">Novo lote</a>
     </div>
   </header>
+
+  <div class="panel">
+    {{ seletor_corpus(corpora, corpus, true) }}
+  </div>
+
+  {% if comparacao and comparacao.linhas %}
+    <div class="panel chart-panel">
+      <h2>Comparação entre corpora</h2>
+      <p class="muted chart-caption">Taxa de status consistente em A, B e C para o PDF nativo e para cada DPI. As barras não somam corpora diferentes.</p>
+      <div class="chart-bar-group chart-bar-group--tall" id="chart-matriz"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Gabarito × corpus × condição</h2>
+      <p class="muted">Cada linha é uma execução. Instituição, período e saldo inicial marcam acerto contra a referência. O erro monetário é a diferença absoluta. Páginas usam o índice do gabarito somado de 1, porque o pipeline numera a partir de 1.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Documento</th>
+              <th>Corpus</th>
+              <th>DPI</th>
+              <th>Cond.</th>
+              <th>Tipo</th>
+              <th>Status</th>
+              <th>Inst.</th>
+              <th>Período</th>
+              <th>Saldo ini.</th>
+              <th class="num">Err. entradas</th>
+              <th class="num">Err. saídas</th>
+              <th class="num">Err. saldo</th>
+              <th class="num">Págs. F1</th>
+              <th class="num">OCR</th>
+              <th class="num">Tempo</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m in comparacao.linhas %}
+            <tr>
+              <td>{{ m.documento }}</td>
+              <td>{{ m.corpus_rotulo }}</td>
+              <td>{% if m.dpi %}{{ m.dpi }}{% else %}nativo{% endif %}</td>
+              <td><span class="badge info">{{ m.condicao or '-' }}</span></td>
+              <td>{{ m.tipo_pdf or '-' }}</td>
+              <td>{{ badge_status(m.status_processamento) }}</td>
+              <td>{% if m.acerto_instituicao is none %}-{% elif m.acerto_instituicao %}sim{% else %}não{% endif %}</td>
+              <td>{% if m.acerto_periodo is none %}-{% elif m.acerto_periodo %}sim{% else %}não{% endif %}</td>
+              <td>{% if m.acerto_saldo_inicial is none %}-{% elif m.acerto_saldo_inicial %}sim{% else %}não{% endif %}</td>
+              <td class="num">{{ m.erro_entradas if m.erro_entradas is not none else '-' }}</td>
+              <td class="num">{{ m.erro_saidas if m.erro_saidas is not none else '-' }}</td>
+              <td class="num">{{ m.erro_saldo_final_informado if m.erro_saldo_final_informado is not none else '-' }}</td>
+              <td class="num">{% if m.paginas_f1 is not none %}{{ (m.paginas_f1 * 100) | round(0) }}%{% else %}-{% endif %}</td>
+              <td class="num">{{ m.paginas_ocr if m.paginas_ocr is not none else '-' }}</td>
+              <td class="num">{% if m.duracao_s is not none %}{{ m.duracao_s }}s{% else %}-{% endif %}</td>
+              <td><a href="/resultados/ver?path={{ m.caminho_resultado }}">abrir</a></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <script type="application/json" id="cmp-data">{{ comparacao.matriz | tojson }}</script>
+  {% endif %}
 
   {% if erro %}<div class="alert err">{{ erro }}</div>{% endif %}
 
@@ -36,7 +100,7 @@
       </div>
       <p class="muted" style="margin:0 0 0.75rem">
         O botão <strong>Gerar relatório completo</strong> baixa um Markdown com Score&nbsp;4/6,
-        divergências A×C, inventário, falhas e valores extraídos × referência —
+        divergências A×C, inventário, falhas e valores extraídos × referência -
         além do que os gráficos e a tabela abaixo mostram.
       </p>
       <div class="hipotese-scores">
@@ -127,7 +191,7 @@
     </div>
 
     <script type="application/json" id="lab-data">{{ dados.laboratorio | tojson }}</script>
-  {% else %}
+  {% elif not comparacao or not comparacao.linhas %}
     {{ empty_state("Laboratório indisponível", "Execute experimentos em Lote para popular métricas.", "Ir para lote", "/lote") }}
   {% endif %}
 {% endblock %}
@@ -136,10 +200,12 @@
   <script src="/static/charts.js?v={{ static_v }}"></script>
   <script>
     document.addEventListener("DOMContentLoaded", () => {
+      if (!window.ExtratoCharts) return;
       const raw = document.getElementById("lab-data");
-      if (!raw || !window.ExtratoCharts) return;
+      const cmp = document.getElementById("cmp-data");
       try {
-        ExtratoCharts.renderLaboratorio(JSON.parse(raw.textContent));
+        if (raw) ExtratoCharts.renderLaboratorio(JSON.parse(raw.textContent));
+        if (cmp) ExtratoCharts.renderMatriz("chart-matriz", JSON.parse(cmp.textContent));
       } catch (e) {
         console.error(e);
       }

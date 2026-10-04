@@ -1,20 +1,28 @@
 {% extends "base.html" %}
+{% from "_macros.html" import seletor_corpus %}
 {% block title %}PDFs{% endblock %}
 {% block content %}
   <h1 class="page-title">PDFs de entrada</h1>
-  <p class="page-sub">Arquivos em <code>dados/entrada/</code>. Upload também permanece local.</p>
+  <p class="page-sub">Cada corpus fica em <code>dados/entrada/{{ corpus.pasta }}/</code>. Upload entra só no corpus nativo.</p>
 
   {% if request.query_params.get('ok') %}
-    <div class="alert ok">PDF enviado com sucesso.</div>
+    <div class="alert ok">PDF enviado para o corpus nativo.</div>
   {% endif %}
+  {% if erro_corpus %}<div class="alert err">{{ erro_corpus }}</div>{% endif %}
 
   <div class="panel">
-    <h2>Enviar PDF</h2>
+    {{ seletor_corpus(corpora, corpus) }}
+  </div>
+
+  {% if not corpus.sintetico %}
+  <div class="panel">
+    <h2>Enviar PDF nativo</h2>
     <form action="/pdfs/upload" method="post" enctype="multipart/form-data" class="actions">
       <input type="file" name="arquivo" accept=".pdf,application/pdf" required />
       <button class="btn" type="submit">Enviar</button>
     </form>
   </div>
+  {% endif %}
 
   <div class="panel">
     <h2>{{ pdfs|length }} arquivo(s)</h2>
@@ -26,7 +34,7 @@
           <td>{{ p.nome }}</td>
           <td>{{ p.tamanho_mb }} MB</td>
           <td>{{ p.modificado }}</td>
-          <td><a href="/processar">processar</a></td>
+          <td><a href="/processar?corpus={{ corpus.id }}">processar</a></td>
         </tr>
         {% else %}
         <tr><td colspan="4" class="muted">Pasta vazia.</td></tr>

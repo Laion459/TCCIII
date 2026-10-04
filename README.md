@@ -52,8 +52,10 @@ Processamento local (`127.0.0.1`); barra de progresso e cancelamento em lotes lo
 ## Experimentos
 
 ```powershell
-python scripts\run_experimentos.py --entrada dados\entrada --saida resultados\experimentos --condicoes A,B,C
-python scripts\calcular_metricas.py --resultados resultados\experimentos --referencias dados\referencia_manual --saida resultados\metricas
+python scripts\gerar_pdfs_rasterizados.py
+python scripts\run_experimentos.py --corpus pdf-nativo --condicoes A,C
+python scripts\run_experimentos.py --corpus pdf-200-dpi --condicoes B,C
+python scripts\calcular_metricas.py --resultados resultados\experimentos\pdf-nativo --referencias dados\referencia_manual --saida resultados\metricas\pdf-nativo
 python scripts\validar_saidas.py --pasta resultados\experimentos
 ```
 
@@ -69,7 +71,10 @@ pytest -q
 
 | Pasta | Uso |
 |-------|-----|
-| `dados/entrada/` | PDFs do experimento (não versionados - LGPD) |
+| `dados/entrada/pdf nativo/` | PDFs com texto nativo (não versionados - LGPD) |
+| `dados/entrada/pdf-100-dpi/` | Mesmos arquivos, só imagem, rasterizados a 100 DPI |
+| `dados/entrada/pdf-200-dpi/` | Mesmos arquivos, só imagem, rasterizados a 200 DPI |
+| `dados/entrada/pdf-300-dpi/` | Mesmos arquivos, só imagem, rasterizados a 300 DPI |
 | `dados/referencia_manual/` | Ground truth manual por documento |
 | `dados/documentos_teste/` | Reservada para fixtures de teste |
 | `resultados/` | Saídas e métricas (local) |
@@ -91,4 +96,4 @@ Requisitos formais e fundamentação: TCC 2 (`tcc2_pronto_posbanca.md`).
 
 - Piloto calibrado para layouts Sicoob e Caixa (conta corrente) presentes na base.
 - Sem deep learning; sem conciliação linha a linha.
-- Corpus sem PDFs escaneados reais com referência manual. Na condição C, OCR é aplicado às páginas com menos de 40 caracteres, inclusive quando o documento foi classificado como nativo.
+- Corpus sem PDFs escaneados reais com referência manual. Há digitalizações sintéticas a 100, 200 e 300 DPI, com o mesmo nome de arquivo, só para varrer a resolução do OCR. Na condição C, OCR é aplicado às páginas com menos de 40 caracteres, inclusive quando o documento foi classificado como nativo.

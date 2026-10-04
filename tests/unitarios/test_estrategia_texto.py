@@ -19,6 +19,30 @@ def _nativo_com_pagina_fraca():
     ]
 
 
+def test_condicao_c_trata_pagina_so_com_timbre_como_fraca():
+    timbre = "ANEXO DE CONTAS FINANCEIRAS\nEMBRACON CONDOMINIOS\n28 / 159\n"
+    paginas = [
+        PaginaTexto(1, "x" * 50, OrigemTexto.NATIVO),
+        PaginaTexto(2, timbre, OrigemTexto.NATIVO),
+    ]
+    classificacao = ClassificacaoPdf(TipoPdf.HIBRIDO, 2, 1, 50.0)
+
+    def ocr_fn(_caminho, _config, paginas_ocr=None):
+        assert list(paginas_ocr) == [2]
+        return [PaginaTexto(2, "extrato lido", OrigemTexto.OCR)]
+
+    resultado = obter_texto_trabalho(
+        "x.pdf",
+        paginas,
+        classificacao,
+        CondicaoExperimental.C,
+        _config(),
+        ocr_fn=ocr_fn,
+    )
+    assert resultado.paginas[1].origem == OrigemTexto.OCR
+    assert resultado.paginas[1].texto == "extrato lido"
+
+
 def test_condicao_c_nativo_aplica_ocr_na_pagina_fraca():
     classificacao = ClassificacaoPdf(TipoPdf.NATIVO, 2, 1, 50.0)
 

@@ -35,6 +35,8 @@ def gerar_relatorio_txt(resultado: ResultadoProcessamento) -> str:
         f"Consistente: {d['validacao']['consistente']}",
         f"Revisão humana: {d['validacao']['revisao_humana']}",
         f"Método de localização: {d['experimento']['metodo_localizacao']}",
+        f"Duração (s): {d['experimento'].get('duracao_s', 0)}",
+        f"Páginas em OCR: {d['experimento'].get('paginas_ocr', 0)}",
         "Alertas:",
     ]
     if d["alertas"]:

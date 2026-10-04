@@ -15,6 +15,12 @@ def _quase_igual(a: Any, b: Any, tolerancia: Decimal) -> bool:
         return str(a) == str(b)
 
 
+def _paginas_referencia_em_base_um(referencia: dict[str, Any]) -> set[int]:
+    """O gabarito grava o índice 0-based do PyMuPDF. O pipeline numera a partir de 1."""
+    paginas = referencia.get("paginas_extrato") or []
+    return {pagina + 1 for pagina in paginas if isinstance(pagina, int)}
+
+
 def comparar_com_referencia(
     resultado: dict[str, Any],
     referencia: dict[str, Any],
@@ -42,7 +48,7 @@ def comparar_com_referencia(
         )
 
     paginas_sistema = set(resultado.get("experimento", {}).get("paginas_extrato") or [])
-    paginas_referencia = set(referencia.get("paginas_extrato") or [])
+    paginas_referencia = _paginas_referencia_em_base_um(referencia)
     pagina = {}
     if paginas_referencia:
         verdadeiros = len(paginas_sistema & paginas_referencia)
@@ -95,6 +101,3 @@ def comparar_com_referencia(
         **pagina,
     }
 
-
-def carregar_json(caminho: Path) -> dict[str, Any]:
-    return json.loads(caminho.read_text(encoding="utf-8"))
